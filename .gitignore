@@ -1,0 +1,55 @@
+# Heavy raw and processed datasets
+/data/
+
+# Generated runtime artifacts (checkpoints, metrics, and output plots)
+# (DO NOT IGNORE if using git submodule; uncomment if manually managed)
+# results/
+/results/
+
+# Third-party reference repositories
+# (Uncomment / keep ignored if manually cloned; comment out if using git submodule)
+external/
+
+# Python cache & compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution & packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Logging & experiment trackers (if stored outside results/)
+wandb/
+
+# IDE / OS specific files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
