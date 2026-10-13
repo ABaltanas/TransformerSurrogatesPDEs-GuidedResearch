@@ -8,7 +8,7 @@
 
 # Third-party reference repositories
 # (Uncomment / keep ignored if manually cloned; comment out if using git submodule)
-external/
+# external/
 
 # Python cache & compiled files
 __pycache__/

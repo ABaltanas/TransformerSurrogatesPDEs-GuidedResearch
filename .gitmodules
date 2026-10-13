@@ -1,0 +1,3 @@
+[submodule "external/smart"]
+	path = external/smart
+	url = https://github.com/jhagnberger/smart
