@@ -9,14 +9,14 @@ from pathlib import Path
 import numpy as np
 
 # Load processed data
-data_dir = Path("data/processed/plasticity")
+data_dir = Path("data/processed/ds_plasticity_nochange")
 train = np.load(data_dir / "train.npz")
 
 die_boundary = train["die_boundary"]   # (900, 101, 2)
 coords = train["coords"]               # (900, 101, 31, 20, 2)
 displacements = train["displacements"] # (900, 101, 31, 20, 2)
 
-out_dir = Path("results/DatasetAnalysis")
+out_dir = Path("results/DatasetAnalysis/ds_plasticity_nochange")
 out_dir.mkdir(parents=True, exist_ok=True)
 
 # 1. Prepare 50 input samples
