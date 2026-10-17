@@ -152,6 +152,10 @@ def plot_displacement_contours(
 ) -> Path:
     """Export contour visualization comparing ground truth, surrogate, and error.
 
+    Plots the spatial deformation on the deformed mesh configuration at the final
+    load increment, with the rigid die profile positioned at its active final stroke
+    and the undeformed reference outline marked for geometric comparison.
+
     Parameters
     ----------
     coords_initial : np.ndarray
@@ -184,38 +188,56 @@ def plot_displacement_contours(
     mag_pred = np.linalg.norm(u_pred, axis=-1)
     mag_diff = np.linalg.norm(u_pred - u_true, axis=-1)
 
+    # Deformed spatial mesh coordinates at final time step
+    x_true = x0 + u_true[:, :, 0]
+    y_true = y0 + u_true[:, :, 1]
+    x_pred = x0 + u_pred[:, :, 0]
+    y_pred = y0 + u_pred[:, :, 1]
+
+    # Rigid die position at final stroke:
+    # In the raw dataset, die_contour is defined at its initial elevation (t=0).
+    # At the final increment (t=t_final), the rigid die strokes downwards into the workpiece.
+    # The vertical stroke matches the deepest indentation of the contacting top surface (y-index 0).
+    stroke = np.min(die_y) - np.min(y_true[:, 0])
+    die_y_stroked = die_y - stroke
+
+    vmax = max(float(np.max(mag_true)), float(np.max(mag_pred)))
+
     fig, axes = plt.subplots(1, 3, figsize=(18, 5), sharey=True)
 
     # 1. ABAQUS Ground Truth
     ax1 = axes[0]
-    cf1 = ax1.contourf(x0, y0, mag_true, levels=50, cmap="viridis")
-    ax1.plot(die_x, die_y, "r--", linewidth=1.8, label="Rigid Die Profile")
+    cf1 = ax1.contourf(x_true, y_true, mag_true, levels=50, cmap="viridis", vmin=0.0, vmax=vmax)
+    ax1.plot(die_x, die_y_stroked, "r--", linewidth=1.8, label="Rigid Die Profile (Final Stroke)")
+    ax1.plot(x0[:, 0], y0[:, 0], color="gray", linestyle=":", linewidth=1.2, alpha=0.8, label="Initial Outline (t=0)")
     ax1.set_title("ABAQUS Ground Truth ||u|| [mm]", fontsize=12, fontweight="bold")
     ax1.set_xlabel("X Coordinate [mm]")
     ax1.set_ylabel("Y Coordinate [mm]")
-    ax1.legend(loc="upper right")
+    ax1.legend(loc="lower right", fontsize=8)
     fig.colorbar(cf1, ax=ax1, label="Displacement [mm]")
 
     # 2. Surrogate Prediction
     ax2 = axes[1]
-    cf2 = ax2.contourf(x0, y0, mag_pred, levels=50, cmap="viridis")
-    ax2.plot(die_x, die_y, "r--", linewidth=1.8, label="Rigid Die Profile")
+    cf2 = ax2.contourf(x_pred, y_pred, mag_pred, levels=50, cmap="viridis", vmin=0.0, vmax=vmax)
+    ax2.plot(die_x, die_y_stroked, "r--", linewidth=1.8, label="Rigid Die Profile (Final Stroke)")
+    ax2.plot(x0[:, 0], y0[:, 0], color="gray", linestyle=":", linewidth=1.2, alpha=0.8, label="Initial Outline (t=0)")
     ax2.set_title("SMART Predicted ||u|| [mm]", fontsize=12, fontweight="bold")
     ax2.set_xlabel("X Coordinate [mm]")
-    ax2.legend(loc="upper right")
+    ax2.legend(loc="lower right", fontsize=8)
     fig.colorbar(cf2, ax=ax2, label="Displacement [mm]")
 
     # 3. Absolute Error
     ax3 = axes[2]
-    cf3 = ax3.contourf(x0, y0, mag_diff, levels=50, cmap="inferno")
-    ax3.plot(die_x, die_y, "r--", linewidth=1.8, label="Rigid Die Profile")
+    cf3 = ax3.contourf(x_true, y_true, mag_diff, levels=50, cmap="inferno")
+    ax3.plot(die_x, die_y_stroked, "r--", linewidth=1.8, label="Rigid Die Profile (Final Stroke)")
+    ax3.plot(x0[:, 0], y0[:, 0], color="gray", linestyle=":", linewidth=1.2, alpha=0.8, label="Initial Outline (t=0)")
     ax3.set_title("Absolute Error ||u_pred - u_true|| [mm]", fontsize=12, fontweight="bold")
     ax3.set_xlabel("X Coordinate [mm]")
-    ax3.legend(loc="upper right")
+    ax3.legend(loc="lower right", fontsize=8)
     fig.colorbar(cf3, ax=ax3, label="Error [mm]")
 
     plt.suptitle(
-        f"Surrogate Physical Verification (Sample {sample_idx:02d})",
+        f"Surrogate Physical Verification (Final Step t=19, Sample {sample_idx:02d})",
         fontsize=14,
         fontweight="bold",
         y=1.02,
