@@ -4,12 +4,15 @@
 Evaluates trained model checkpoints (e.g., SMART) on unobserved test partitions
 using the post-training EvaluationEngine subsystem in src/evaluation. Results
 are persisted in structured directories under results/ adhering to the hierarchy:
-    results/<name of the dataset>/<ModelName>/<training parameters>/<experiment>/
+    results/TrainingAnalysis/<name of the dataset>/<ModelName>/<training parameters>/<experiment>/
 
 Artifacts generated:
-- evaluation_summary.md: Publication-ready markdown report with benchmark tables.
-- evaluation_metrics.json: Machine-readable metric records for downstream aggregation.
+- evaluation_summary.md: Publication-ready markdown report with benchmark tables and embedded KPI charts.
+- evaluation_metrics.json: Machine-readable metric records with physical, feasibility, computational, and training KPIs.
 - evaluation_contours.png: High-resolution visual comparisons of displacements and error fields.
+- training_curves.png: 4-panel publication-grade KPI dashboard (total loss, surface vs. volume, generalization gap, LR schedule).
+- training_history.csv: Tabular numerical dataset of error per epoch.
+- training_metrics.jsonl: Preserved copy of raw training telemetry.
 """
 
 import argparse
@@ -244,6 +247,12 @@ def parse_args() -> argparse.Namespace:
         default="best_model.pt",
         help="Filename of the checkpoint to evaluate within model_dir.",
     )
+    parser.add_argument(
+        "--training_metrics",
+        type=Path,
+        default=None,
+        help="Path to training_metrics.jsonl log file (default: inferred from model_dir).",
+    )
     # Dataset paths
     parser.add_argument(
         "--data_dir",
@@ -254,8 +263,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--results_dir",
         type=Path,
-        default=PROJECT_ROOT / "results",
-        help="Base results directory where evaluation benchmarks are stored.",
+        default=PROJECT_ROOT / "results" / "TrainingAnalysis",
+        help="Base results directory where evaluation benchmarks are stored (default: results/TrainingAnalysis).",
     )
     # Output hierarchy configuration: <dataset>/<model>/<training_params>/<experiment>
     parser.add_argument(
@@ -427,6 +436,12 @@ def main() -> None:
 
     # 7. Execute Benchmark Pipeline
     print("\nRunning evaluation through EvaluationEngine...")
+    training_metrics_path = args.training_metrics
+    if training_metrics_path is None:
+        candidate_metrics = args.model_dir / "training_metrics.jsonl"
+        if candidate_metrics.exists():
+            training_metrics_path = candidate_metrics
+
     summary = engine.evaluate(
         model=model_wrapper,
         checkpoint_path=checkpoint_path,
@@ -436,6 +451,7 @@ def main() -> None:
         device=device,
         test_npz_path=test_npz_path,
         fem_reference_time_s=args.fem_reference_time_s,
+        training_metrics_path=training_metrics_path,
     )
 
     # 8. Generate Visual Contour Comparisons
@@ -462,15 +478,28 @@ def main() -> None:
             sample_idx=0,
         )
         summary["exported_artifacts"]["contour_plot"] = str(plot_path)
-        # Update JSON record with plot artifact path
-        with open(output_dir / "evaluation_metrics.json", "w", encoding="utf-8") as f:
-            json.dump(summary, f, indent=2)
+        # Refresh exported Markdown and JSON reports with contour plot artifact
+        engine.exporter.export(summary, output_dir)
 
     # 9. Render Terminal Summary
     phys = summary["physical_metrics"]
     feas = summary["feasibility_metrics"]
     comp = summary["computational_metrics"]
     pass_str = "PASS" if feas["contact_feasibility_pass"] == 1.0 else "FAIL"
+
+    train_kpis = summary.get("training_kpis")
+    if train_kpis:
+        print("\n" + "=" * 80)
+        print("TRAINING CONVERGENCE & OPTIMIZATION KPIS")
+        print("=" * 80)
+        print(f"Total Completed Epochs:   {train_kpis['total_epochs']}")
+        print(f"Optimal Epoch (Best Val): Epoch {train_kpis['best_epoch']}")
+        print(f"Initial Validation Loss:  {train_kpis['initial_val_loss']:.4e}")
+        print(f"Best Validation Loss:     {train_kpis['best_val_loss']:.4e} ({train_kpis['val_loss_reduction_pct']:.1f}% reduction)")
+        print(f"Final Train / Val Loss:   {train_kpis['final_train_loss']:.4e} / {train_kpis['final_val_loss']:.4e}")
+        print(f"Generalization Gap:       {train_kpis['generalization_gap_best']:+.4e}")
+        print(f"Learning Rate Transition: {train_kpis['initial_lr']:.2e} -> {train_kpis['final_lr']:.2e}")
+        print(f"Convergence Assessment:   {train_kpis['convergence_status']}")
 
     print("\n" + "=" * 80)
     print("SCIENTIFIC BENCHMARK SUMMARY")

@@ -98,6 +98,12 @@ def parse_args() -> argparse.Namespace:
         default=PROJECT_ROOT / "models" / "smart_plasticity_onlyFinalStep",
         help="Parent directory where checkpoints and training logs will be saved.",
     )
+    parser.add_argument(
+        "--results_dir",
+        type=Path,
+        default=PROJECT_ROOT / "results" / "TrainingAnalysis",
+        help="Base directory where training analysis and KPI charts will be saved (default: results/TrainingAnalysis).",
+    )
     # Training hyperparameters
     parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs.")
     parser.add_argument("--batch_size", type=int, default=16, help="Batch size per training step.")
@@ -232,6 +238,37 @@ def main() -> None:
     print(f"Best Validation Loss: {summary['best_val_loss']:.4e}")
     print(f"Best Checkpoint:      {summary['best_checkpoint']}")
 
+    # 8. Post-Training Telemetry Analysis & KPI Chart Generation
+    from src.evaluation.training_history import TrainingTelemetryAnalyzer
+
+    lr_str = f"{args.lr:.1e}" if abs(args.lr - 1e-4) >= 1e-6 else "1e-4"
+    training_params = f"epochs_{args.epochs}_batch_{args.batch_size}_lr_{lr_str}"
+    dataset_name = args.data_dir.name
+    experiment_name = args.models_dir.name
+
+    analysis_output_dir = (
+        args.results_dir
+        / dataset_name
+        / "SMART"
+        / training_params
+        / experiment_name
+    )
+    analysis_output_dir.mkdir(parents=True, exist_ok=True)
+
+    metrics_file = args.models_dir / "training_metrics.jsonl"
+    if metrics_file.exists():
+        print(f"\nAnalyzing training dynamics and generating KPI charts in {analysis_output_dir}...")
+        analyzer = TrainingTelemetryAnalyzer()
+        analysis_result = analyzer.analyze_and_export(
+            metrics_file=metrics_file,
+            output_dir=analysis_output_dir,
+        )
+        kpis = analysis_result["training_kpis"]
+        print(f"Optimal Checkpoint Epoch: Epoch {kpis['best_epoch']} (Val Rel-L2: {kpis['best_val_loss']:.4e})")
+        print(f"Total Val Loss Reduction: {kpis['val_loss_reduction_pct']:.1f}%")
+        print(f"Training Artifacts Saved: {analysis_output_dir}")
+
 
 if __name__ == "__main__":
     main()
+
