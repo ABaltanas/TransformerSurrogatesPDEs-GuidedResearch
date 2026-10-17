@@ -1,10 +1,17 @@
-# Heavy raw and processed datasets
-/data/
+# Heavy raw and processed datasets (track directory structure via .gitkeep)
+/data/**
+!/data/**/
+!/data/**/.gitkeep
 
-# Generated runtime artifacts (checkpoints, metrics, and output plots)
-# (DO NOT IGNORE if using git submodule; uncomment if manually managed)
-# results/
-/results/
+# Generated runtime artifacts (track directory structure via .gitkeep)
+/results/**
+!/results/**/
+!/results/**/.gitkeep
+
+# Model checkpoints and weights (track directory structure via .gitkeep)
+/models/**
+!/models/**/
+!/models/**/.gitkeep
 
 # Third-party reference repositories
 # (Uncomment / keep ignored if manually cloned; comment out if using git submodule)
