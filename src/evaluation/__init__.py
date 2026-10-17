@@ -14,10 +14,12 @@ from src.evaluation.interfaces import (
     InferenceRunner,
     PhysicalMetricsCalculator,
     ReportExporter,
+    TrainingHistoryAnalyzer,
 )
 from src.evaluation.metrics import PlasticityMetricsCalculator
 from src.evaluation.profiler import HardwareProfiler
 from src.evaluation.runner import BatchedInferenceRunner
+from src.evaluation.training_history import TrainingTelemetryAnalyzer
 from src.evaluation.validators import DiePenetrationValidator
 
 __all__ = [
@@ -28,6 +30,7 @@ __all__ = [
     "FeasibilityValidator",
     "BenchmarkProfiler",
     "ReportExporter",
+    "TrainingHistoryAnalyzer",
     # Implementations
     "BatchedInferenceRunner",
     "StatisticalDenormalizer",
@@ -37,6 +40,8 @@ __all__ = [
     "MarkdownReportExporter",
     "JsonReportExporter",
     "CompositeReportExporter",
+    "TrainingTelemetryAnalyzer",
     # Orchestrator
     "EvaluationEngine",
 ]
+

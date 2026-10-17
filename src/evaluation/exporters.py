@@ -85,6 +85,56 @@ class MarkdownReportExporter(ReportExporter):
 | **Abaqus FEM Solver Runtime** | ~120.0 seconds / simulation |
 | **Surrogate Speedup Factor** | **{speedup:,.0f}x Faster** |
 """
+        # 4. Training Convergence & Optimization KPIs (if available)
+        train_kpis = summary.get("training_kpis")
+        if train_kpis:
+            tot_epochs = train_kpis.get("total_epochs", "N/A")
+            best_epoch = train_kpis.get("best_epoch", "N/A")
+            init_val = train_kpis.get("initial_val_loss", 0.0)
+            init_tr = train_kpis.get("initial_train_loss", 0.0)
+            best_val = train_kpis.get("best_val_loss", 0.0)
+            val_red = train_kpis.get("val_loss_reduction_pct", 0.0)
+            fin_tr = train_kpis.get("final_train_loss", 0.0)
+            fin_val = train_kpis.get("final_val_loss", 0.0)
+            tr_surf = train_kpis.get("best_train_loss_surf", 0.0)
+            val_surf = train_kpis.get("best_val_loss_surf", 0.0)
+            tr_vol = train_kpis.get("best_train_loss_vol", 0.0)
+            val_vol = train_kpis.get("best_val_loss_vol", 0.0)
+            best_gap = train_kpis.get("generalization_gap_best", 0.0)
+            init_lr = train_kpis.get("initial_lr", 0.0)
+            final_lr = train_kpis.get("final_lr", 0.0)
+            status = train_kpis.get("convergence_status", "Completed")
+
+            content += f"""
+---
+
+### 4. Training Convergence & Optimization KPIs
+| Training Metric / KPI | Value | Reference / Status |
+| :--- | :--- | :--- |
+| **Total Completed Epochs** | **{tot_epochs}** | Full training schedule executed |
+| **Optimal Checkpoint Epoch** | **Epoch {best_epoch}** | Lowest validation error checkpoint |
+| **Initial Total Loss (Epoch 1)** | **{init_val:.4e}** (Train: {init_tr:.4e}) | Optimization starting point |
+| **Optimal Validation Loss** | **{best_val:.4e}** | **{val_red:.1f}% Total Reduction** |
+| **Final Epoch Total Loss** | Train: **{fin_tr:.4e}** | Val: **{fin_val:.4e}** | Terminal training state |
+| **Surface Contact Loss (Best)** | Train: **{tr_surf:.4e}** | Val: **{val_surf:.4e}** | Boundary contact adherence |
+| **Volume Interior Loss (Best)** | Train: **{tr_vol:.4e}** | Val: **{val_vol:.4e}** | Continuum deformation fidelity |
+| **Generalization Gap (Val - Train)** | **{best_gap:+.4e}** | Generalization error spread |
+| **Learning Rate Transition** | **{init_lr:.2e} -> {final_lr:.2e}** | Scheduled annealing |
+| **Convergence Assessment** | **{status}** | Solid mechanics surrogate stability |
+"""
+
+        # 5. Benchmark Visualizations (Contour and KPI Plots)
+        artifacts = summary.get("exported_artifacts", {})
+        has_training_plot = (output_dir / "training_curves.png").exists() or "training_curves_plot" in artifacts
+        has_contour_plot = (output_dir / "evaluation_contours.png").exists() or "contour_plot" in artifacts
+
+        if has_training_plot or has_contour_plot:
+            content += "\n---\n\n### 5. Benchmark Visualizations\n"
+            if has_training_plot:
+                content += "\n#### A. Training Convergence Curves & Error per Epoch\n![Training Convergence Curves](training_curves.png)\n"
+            if has_contour_plot:
+                content += "\n#### B. Deformed Mesh & Physical Displacement Verification Contours\n![Surrogate Verification Contours](evaluation_contours.png)\n"
+
         with open(report_path, "w", encoding="utf-8") as f:
             f.write(content)
 
@@ -119,6 +169,11 @@ class JsonReportExporter(ReportExporter):
             clean_summary["exported_artifacts"] = {
                 k: str(v) for k, v in clean_summary["exported_artifacts"].items()
             }
+        if "training_artifacts" in clean_summary:
+            clean_summary["training_artifacts"] = {
+                k: str(v) for k, v in clean_summary["training_artifacts"].items()
+            }
+
 
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(clean_summary, f, indent=2)

@@ -253,3 +253,142 @@ def test_evaluation_engine_end_to_end() -> None:
         assert (temp_dir / "report" / "evaluation_metrics.json").exists()
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_training_telemetry_analyzer() -> None:
+    """Test TrainingTelemetryAnalyzer parsing, KPI calculation, CSV export, and plot generation."""
+    temp_dir = Path(tempfile.mkdtemp())
+    try:
+        from src.evaluation.training_history import TrainingTelemetryAnalyzer
+
+        metrics_file = temp_dir / "training_metrics.jsonl"
+        records = [
+            {
+                "epoch": 1,
+                "total_epochs": 3,
+                "timestamp": 100.0,
+                "train": {"loss_surf": 0.5, "loss_vol": 0.5, "loss_total": 1.0},
+                "val": {"loss_surf": 0.4, "loss_vol": 0.4, "loss_total": 0.8},
+                "lr": 1e-4,
+            },
+            {
+                "epoch": 2,
+                "total_epochs": 3,
+                "timestamp": 110.0,
+                "train": {"loss_surf": 0.2, "loss_vol": 0.3, "loss_total": 0.5},
+                "val": {"loss_surf": 0.15, "loss_vol": 0.2, "loss_total": 0.35},
+                "lr": 5e-5,
+            },
+            {
+                "epoch": 3,
+                "total_epochs": 3,
+                "timestamp": 120.0,
+                "train": {"loss_surf": 0.1, "loss_vol": 0.2, "loss_total": 0.3},
+                "val": {"loss_surf": 0.1, "loss_vol": 0.15, "loss_total": 0.25},
+                "lr": 1e-5,
+            },
+        ]
+        with open(metrics_file, "w", encoding="utf-8") as f:
+            for r in records:
+                f.write(json.dumps(r) + "\n")
+
+        analyzer = TrainingTelemetryAnalyzer()
+        res = analyzer.analyze_and_export(metrics_file=metrics_file, output_dir=temp_dir / "out")
+
+        kpis = res["training_kpis"]
+        assert kpis["total_epochs"] == 3
+        assert kpis["best_epoch"] == 3
+        assert kpis["best_val_loss"] == pytest.approx(0.25, abs=1e-5)
+        assert kpis["initial_val_loss"] == pytest.approx(0.8, abs=1e-5)
+        assert kpis["val_loss_reduction_pct"] == pytest.approx((1.0 - 0.25 / 0.8) * 100.0, abs=1e-3)
+        assert kpis["best_val_loss_surf"] == pytest.approx(0.1, abs=1e-5)
+        assert kpis["best_val_loss_vol"] == pytest.approx(0.15, abs=1e-5)
+
+        # Artifacts verification
+        artifacts = res["artifacts"]
+        assert (temp_dir / "out" / "training_history.csv").exists()
+        assert (temp_dir / "out" / "training_metrics.jsonl").exists()
+        assert (temp_dir / "out" / "training_curves.png").exists()
+        assert (temp_dir / "out" / "training_curves.png").stat().st_size > 1000
+
+        # Check CSV content
+        with open(artifacts["training_history_csv"], "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            assert len(lines) == 4  # header + 3 rows
+            assert "train_loss_total" in lines[0]
+            assert "val_loss_surf" in lines[0]
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_evaluation_engine_with_training_telemetry() -> None:
+    """Test full EvaluationEngine end-to-end integration with training telemetry."""
+    temp_dir = Path(tempfile.mkdtemp())
+    try:
+        dataset = MockEvalPlasticityDataset(num_samples=2)
+        loader = SMARTBatchLoader()
+        dataloader = DataLoader(dataset, batch_size=2, collate_fn=loader.loadDataset)
+
+        config = {
+            "spatial_dim": 2,
+            "surface_channels": 2,
+            "volume_channels": 2,
+            "latent_dim": 16,
+            "latent_geometry_points": 8,
+            "subsampled_geometry_points": 16,
+            "num_encoder_decoder_blocks": 1,
+            "num_heads": 2,
+        }
+        wrapper = SMARTModelWrapper(config=config)
+
+        stats_file = temp_dir / "statistical_data.json"
+        stats_data = {
+            "displacements": {
+                "per_channel": {
+                    "mean": [0.0, 0.0],
+                    "std": [1.0, 1.0],
+                }
+            }
+        }
+        with open(stats_file, "w", encoding="utf-8") as f:
+            json.dump(stats_data, f)
+
+        # Create training metrics
+        metrics_file = temp_dir / "training_metrics.jsonl"
+        with open(metrics_file, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"epoch": 1, "total_epochs": 1, "train": {"loss_total": 0.5, "loss_surf": 0.2, "loss_vol": 0.3}, "val": {"loss_total": 0.4, "loss_surf": 0.15, "loss_vol": 0.25}, "lr": 1e-4}) + "\n")
+
+        engine = EvaluationEngine(
+            runner=BatchedInferenceRunner(),
+            denormalizer=StatisticalDenormalizer(),
+            metrics_calc=PlasticityMetricsCalculator(),
+            validator=DiePenetrationValidator(),
+            profiler=HardwareProfiler(warmup_runs=1, timing_runs=1),
+            exporter=CompositeReportExporter(),
+        )
+
+        output_dir = temp_dir / "eval_out"
+        summary = engine.evaluate(
+            model=wrapper,
+            checkpoint_path=None,
+            test_loader=dataloader,
+            stats_path=stats_file,
+            output_dir=output_dir,
+            device=torch.device("cpu"),
+            training_metrics_path=metrics_file,
+        )
+
+        assert "training_kpis" in summary
+        assert summary["training_kpis"]["total_epochs"] == 1
+        assert "training_curves_plot" in summary["exported_artifacts"]
+        assert "training_history_csv" in summary["exported_artifacts"]
+
+        # Check markdown report includes Section 4
+        md_path = output_dir / "evaluation_summary.md"
+        assert md_path.exists()
+        md_text = md_path.read_text(encoding="utf-8")
+        assert "### 4. Training Convergence & Optimization KPIs" in md_text
+        assert "training_curves.png" in md_text
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+

@@ -15,7 +15,9 @@ from src.evaluation.interfaces import (
     InferenceRunner,
     PhysicalMetricsCalculator,
     ReportExporter,
+    TrainingHistoryAnalyzer,
 )
+from src.evaluation.training_history import TrainingTelemetryAnalyzer
 from src.training.interfaces import ModelWrapper
 
 
@@ -36,6 +38,8 @@ class EvaluationEngine:
         Inference latency, memory, and throughput profiler.
     exporter : ReportExporter
         Report and artifact generation strategy.
+    training_analyzer : Optional[TrainingHistoryAnalyzer], default=None
+        Training telemetry parser, convergence KPI calculator, and plotter.
     """
 
     def __init__(
@@ -46,6 +50,7 @@ class EvaluationEngine:
         validator: FeasibilityValidator,
         profiler: BenchmarkProfiler,
         exporter: ReportExporter,
+        training_analyzer: Optional[TrainingHistoryAnalyzer] = None,
     ) -> None:
         self.runner = runner
         self.denormalizer = denormalizer
@@ -53,6 +58,7 @@ class EvaluationEngine:
         self.validator = validator
         self.profiler = profiler
         self.exporter = exporter
+        self.training_analyzer = training_analyzer or TrainingTelemetryAnalyzer()
 
     def evaluate(
         self,
@@ -60,10 +66,11 @@ class EvaluationEngine:
         checkpoint_path: Optional[Path],
         test_loader: DataLoader,
         stats_path: Path,
-        output_dir: Path,
-        device: torch.device,
+        output_dir: Optional[Path] = None,
+        device: torch.device = torch.device("cpu"),
         test_npz_path: Optional[Path] = None,
         fem_reference_time_s: float = 120.0,
+        training_metrics_path: Optional[Path] = None,
     ) -> Dict[str, Any]:
         """Execute complete scientific benchmark evaluation.
 
@@ -77,22 +84,28 @@ class EvaluationEngine:
             DataLoader wrapping the test partition.
         stats_path : Path
             Path to statistical_data.json.
-        output_dir : Path
-            Directory where evaluation reports and plots will be written.
-        device : torch.device
+        output_dir : Optional[Path], default=None
+            Directory where evaluation reports and plots will be written (default: results/TrainingAnalysis).
+        device : torch.device, default=cpu
             Evaluation hardware device.
         test_npz_path : Optional[Path], default=None
             Direct path to test.npz for ground truth extraction if available.
         fem_reference_time_s : float, default=120.0
             Abaqus FEM simulation time per sample for speedup calculation.
+        training_metrics_path : Optional[Path], default=None
+            Direct path to training_metrics.jsonl log file. If None, checks checkpoint directory.
 
         Returns
         -------
         Dict[str, Any]
             Comprehensive evaluation results dictionary.
         """
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        resolved_output_dir = (
+            Path(output_dir) if output_dir is not None else Path("results") / "TrainingAnalysis"
+        )
+        resolved_output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = resolved_output_dir
+
 
         # 1. Load trained checkpoint weights if path provided
         if checkpoint_path is not None:
@@ -145,19 +158,48 @@ class EvaluationEngine:
             fem_reference_time_s=fem_reference_time_s,
         )
 
-        # 9. Aggregate complete benchmark record
-        evaluation_summary = {
+        # 9. Ingest and analyze training telemetry and convergence KPIs (if available)
+        target_metrics_file: Optional[Path] = None
+        if training_metrics_path is not None and Path(training_metrics_path).exists():
+            target_metrics_file = Path(training_metrics_path)
+        elif checkpoint_path is not None:
+            candidate = Path(checkpoint_path).parent / "training_metrics.jsonl"
+            if candidate.exists():
+                target_metrics_file = candidate
+
+        training_data: Optional[Dict[str, Any]] = None
+        if target_metrics_file is not None and self.training_analyzer is not None:
+            try:
+                training_data = self.training_analyzer.analyze_and_export(
+                    metrics_file=target_metrics_file,
+                    output_dir=output_dir,
+                )
+            except Exception as e:
+                print(f"[Warning] Failed to analyze training telemetry: {e}")
+
+        # 10. Aggregate complete benchmark record
+        evaluation_summary: Dict[str, Any] = {
             "checkpoint": str(checkpoint_path) if checkpoint_path else "in_memory",
             "physical_metrics": error_metrics,
             "feasibility_metrics": feasibility_metrics,
             "computational_metrics": hardware_metrics,
         }
 
-        # 10. Export publication markdown report and JSON record
+        if training_data is not None:
+            evaluation_summary["training_kpis"] = training_data["training_kpis"]
+            evaluation_summary["training_artifacts"] = {
+                k: str(v) for k, v in training_data["artifacts"].items()
+            }
+
+        # 11. Export publication markdown report and JSON record
         saved_artifacts = self.exporter.export(evaluation_summary, output_dir)
         evaluation_summary["exported_artifacts"] = {k: str(v) for k, v in saved_artifacts.items()}
+        if training_data is not None:
+            for k, v in training_data["artifacts"].items():
+                evaluation_summary["exported_artifacts"][k] = str(v)
 
         return evaluation_summary
+
 
     def _extract_ground_truth(
         self,

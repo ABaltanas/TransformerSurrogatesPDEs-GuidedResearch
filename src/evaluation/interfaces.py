@@ -178,3 +178,32 @@ class ReportExporter(ABC):
             Dictionary mapping artifact names to their persisted file paths.
         """
         pass
+
+
+class TrainingHistoryAnalyzer(ABC):
+    """Abstract interface for parsing, analyzing, persisting, and plotting training telemetry."""
+
+    @abstractmethod
+    def analyze_and_export(
+        self,
+        metrics_file: Path,
+        output_dir: Path,
+    ) -> Dict[str, Any]:
+        """Parse training metrics, compute convergence KPIs, export tables and plots.
+
+        Parameters
+        ----------
+        metrics_file : Path
+            Path to training_metrics.jsonl log file.
+        output_dir : Path
+            Destination directory under results/ to write training data and KPI plots.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary containing:
+            - 'training_kpis': Dict with summary figures (best_epoch, best_loss, reduction, etc.)
+            - 'artifacts': Dict mapping artifact names to Paths
+            - 'history_summary': List with tabular records
+        """
+        pass
