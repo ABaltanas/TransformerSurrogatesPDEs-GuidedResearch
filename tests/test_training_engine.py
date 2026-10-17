@@ -71,7 +71,7 @@ def test_smart_batch_loader() -> None:
     assert batch["geo"].shape == (2, 101, 2)
     assert batch["surf_query_pos"].shape == (2, 101, 2)
     assert batch["vol_query_pos"].shape == (2, 3030, 2)
-    assert batch["targets"]["surf_data"].shape == (2, 101, 1)
+    assert batch["targets"]["surf_data"].shape == (2, 101, 2)
     assert batch["targets"]["vol_data"].shape == (2, 3030, 2)
     assert batch["targets"]["displacements"].shape == (2, 101, 31, 2)
 

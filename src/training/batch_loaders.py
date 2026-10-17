@@ -31,6 +31,8 @@ class SMARTBatchLoader(BatchLoader):
     max_pos : Optional[Sequence[float]], default=None
         Upper coordinate bounds [x_max, y_max] for scaling positions to [0, 1].
         Defaults to [1.0, 27.0] mm.
+    surface_channels : int, default=2
+        Number of physical channels to extract for the surface boundary (1 or 2).
     """
 
     def __init__(
@@ -38,11 +40,13 @@ class SMARTBatchLoader(BatchLoader):
         stats: Optional[Dict[str, Any]] = None,
         min_pos: Optional[Sequence[float]] = None,
         max_pos: Optional[Sequence[float]] = None,
+        surface_channels: int = 2,
     ) -> None:
         self.stats = stats
         self.min_pos = np.array(min_pos if min_pos is not None else [-50.0, 0.0], dtype=np.float32)
         self.max_pos = np.array(max_pos if max_pos is not None else [1.0, 27.0], dtype=np.float32)
         self.pos_span = self.max_pos - self.min_pos
+        self.surface_channels = int(surface_channels)
 
     def loadDataset(self, samples: Sequence[Dict[str, Union[np.ndarray, Any]]]) -> Dict[str, torch.Tensor]:
         """Collate simulation sample dictionaries into SMART-formatted batch tensors.
@@ -60,7 +64,7 @@ class SMARTBatchLoader(BatchLoader):
             - 'geo': (B, 101, 2) float32 normalized die contour.
             - 'surf_query_pos': (B, 101, 2) float32 normalized top surface query coordinates.
             - 'vol_query_pos': (B, 3030, 2) float32 normalized continuum query coordinates.
-            - 'targets': Sub-dictionary containing 'surf_data' (B, 101, 1), 'vol_data' (B, 3030, 2),
+            - 'targets': Sub-dictionary containing 'surf_data' (B, 101, C_surf), 'vol_data' (B, 3030, 2),
               and 'displacements' (B, 101, 31, 2).
         """
         batch_size = len(samples)
@@ -88,8 +92,14 @@ class SMARTBatchLoader(BatchLoader):
         norm_vol_x0 = (raw_vol_x0 - self.min_pos) / self.pos_span
 
         # 3. Extract and standardize targets
-        # Surface target: Vertical displacement u_y along the contacting boundary (B, 101, 1)
-        raw_surf_u = stacked_u[:, :, -1, 1:2]
+        # Surface target:
+        if self.surface_channels == 1:
+            # Vertical displacement u_y only along contacting boundary (B, 101, 1)
+            raw_surf_u = stacked_u[:, :, -1, 1:2]
+        else:
+            # Full displacement vector (u_x, u_y) along contacting boundary (B, 101, 2)
+            raw_surf_u = stacked_u[:, :, -1, :]
+
         # Volume target: Full displacement vector (u_x, u_y) in the interior (B, 3030, 2)
         raw_vol_u = stacked_u[:, :, :-1, :].reshape(batch_size, -1, 2)
 
@@ -98,7 +108,10 @@ class SMARTBatchLoader(BatchLoader):
             u_mean = np.array(u_stats["mean"], dtype=np.float32)
             u_std = np.array(u_stats["std"], dtype=np.float32)
 
-            std_surf_u = (raw_surf_u - u_mean[1]) / (u_std[1] + 1e-8)
+            if self.surface_channels == 1:
+                std_surf_u = (raw_surf_u - u_mean[1]) / (u_std[1] + 1e-8)
+            else:
+                std_surf_u = (raw_surf_u - u_mean) / (u_std + 1e-8)
             std_vol_u = (raw_vol_u - u_mean) / (u_std + 1e-8)
         else:
             std_surf_u = raw_surf_u
