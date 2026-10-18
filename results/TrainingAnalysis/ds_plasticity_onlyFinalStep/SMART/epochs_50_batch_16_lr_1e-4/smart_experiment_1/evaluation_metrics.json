@@ -1,0 +1,60 @@
+{
+  "checkpoint": "models/smart_experiment_1/best_model.pt",
+  "physical_metrics": {
+    "rel_l2_overall": 0.279233838850977,
+    "l_inf_max_mm": 5.2316762042171,
+    "surface_rel_l2": 1.2489620756061575,
+    "volume_rel_l2": 0.2047392894749831,
+    "sobolev_h1_semi_norm": 2.544783992347621
+  },
+  "feasibility_metrics": {
+    "max_die_penetration_mm": 0.0,
+    "mean_die_penetration_mm": 0.0,
+    "penetration_violation_rate_pct": 0.0,
+    "contact_feasibility_pass": 1.0
+  },
+  "computational_metrics": {
+    "inference_latency_ms_per_sample": 3.0030717849731445,
+    "peak_vram_mb": 272.376953125,
+    "total_parameters": 1812932.0,
+    "trainable_parameters": 1812932.0,
+    "surrogate_speedup_vs_fem": 39959.084761296544
+  },
+  "training_kpis": {
+    "total_epochs": 50,
+    "best_epoch": 41,
+    "best_val_loss": 0.2533983886241913,
+    "best_train_loss": 0.22608315108115212,
+    "initial_train_loss": 1.8056100293209678,
+    "initial_val_loss": 1.086531162261963,
+    "final_train_loss": 0.21822065507110797,
+    "final_val_loss": 0.27469345927238464,
+    "best_val_loss_surf": 0.004178997594863176,
+    "best_val_loss_vol": 0.2492194026708603,
+    "best_train_loss_surf": 0.003192619984283259,
+    "best_train_loss_vol": 0.22289053023907177,
+    "final_val_loss_surf": 0.0020466649439185858,
+    "final_val_loss_vol": 0.27264678478240967,
+    "train_loss_reduction_pct": 87.91429757658281,
+    "val_loss_reduction_pct": 76.6782217183112,
+    "generalization_gap_best": 0.02731523754303916,
+    "generalization_gap_final": 0.05647280420127668,
+    "initial_lr": 9.990232305719945e-05,
+    "final_lr": 1e-06,
+    "min_lr": 1e-06,
+    "convergence_status": "Strong Convergence (76.7% Error Drop, Peak at Epoch 41)"
+  },
+  "training_artifacts": {
+    "training_curves_plot": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_onlyFinalStep/SMART/epochs_50_batch_16_lr_1e-4/smart_experiment_1/training_curves.png",
+    "training_history_csv": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_onlyFinalStep/SMART/epochs_50_batch_16_lr_1e-4/smart_experiment_1/training_history.csv",
+    "training_metrics_log": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_onlyFinalStep/SMART/epochs_50_batch_16_lr_1e-4/smart_experiment_1/training_metrics.jsonl"
+  },
+  "exported_artifacts": {
+    "markdown_report": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_onlyFinalStep/SMART/epochs_50_batch_16_lr_1e-4/smart_experiment_1/evaluation_summary.md",
+    "json_report": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_onlyFinalStep/SMART/epochs_50_batch_16_lr_1e-4/smart_experiment_1/evaluation_metrics.json",
+    "training_curves_plot": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_onlyFinalStep/SMART/epochs_50_batch_16_lr_1e-4/smart_experiment_1/training_curves.png",
+    "training_history_csv": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_onlyFinalStep/SMART/epochs_50_batch_16_lr_1e-4/smart_experiment_1/training_history.csv",
+    "training_metrics_log": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_onlyFinalStep/SMART/epochs_50_batch_16_lr_1e-4/smart_experiment_1/training_metrics.jsonl",
+    "contour_plot": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_onlyFinalStep/SMART/epochs_50_batch_16_lr_1e-4/smart_experiment_1/evaluation_contours.png"
+  }
+}

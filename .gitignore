@@ -3,11 +3,6 @@
 !/data/**/
 !/data/**/.gitkeep
 
-# Generated runtime artifacts (track directory structure via .gitkeep)
-/results/**
-!/results/**/
-!/results/**/.gitkeep
-
 # Model checkpoints and weights (track directory structure via .gitkeep)
 /models/**
 !/models/**/
