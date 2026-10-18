@@ -186,41 +186,12 @@ classDiagram
   2. **Parameter Exposure:** Exposes `get_torch_module()` so that PyTorch optimizers can register the model's trainable parameters (`optimizer = AdamW(wrapper.get_torch_module().parameters())`).
   3. **Forward Translation:** Unpacks `batch` keys, executes the forward pass, and collects the model's raw outputs.
   4. **Output Reconstruction:** Reassembles partitioned outputs into a standard dictionary containing the full displacement field `(B, 101, 31, 2)`.
-* **SMART Implementation (`SMARTModelWrapper`):**
-  ```python
-  class SMARTModelWrapper(ModelWrapper):
-      def __init__(self, architecture_config: Dict[str, Any]) -> None:
-          # 1. Instantiates the deep learning model internally
-          self.model = SMART(
-              spatial_dim=2,
-              surface_channels=1,
-              volume_channels=2,
-              latent_dim=architecture_config.get("latent_dim", 256),
-              latent_geometry_points=architecture_config.get("latent_geo_points", 64),
-              subsampled_geometry_points=architecture_config.get("subsampled_points", 101),
-              num_encoder_decoder_blocks=architecture_config.get("num_blocks", 6),
-              num_heads=architecture_config.get("num_heads", 8),
-          )
+* **Concrete Example: SMART Model Adaptation (`SMARTModelWrapper`):**
+  - **Internal Model Instantiation:** During initialization, it instantiates the underlying `SMART` transformer instance, configuring parameters such as latent geometry point counts, attention heads, encoder/decoder blocks, and embedding dimensions.
+  - **Signature Unpacking:** During `forward()`, it unpacks the model-specific tensors (`geo`, `surf_query_pos`, `vol_query_pos`, and optional `params`) from the unified batch dictionary and routes them into the model's native forward call.
+  - **Output Field Reconstruction:** Because SMART produces partitioned outputs (`surf_pred` for contact boundary displacements and `vol_pred` for interior continuum displacements), the wrapper invokes its internal reconstruction method (`_reconstruct_displacement_field()`) to stitch them back into the standard 4D tensor `(B, 101, 31, 2)`.
+  - **Module Exposure:** Returns the internal `torch.nn.Module` via `get_torch_module()`, allowing `Optimizer` and PyTorch utility functions to access parameters, track gradients, and manage device transfers without needing direct access to wrapper internals.
 
-      def forward(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-          # 2. Feeds model-specific keyword arguments into the model
-          y_hat_surf, y_hat_vol = self.model(
-              geo=batch["geo"],
-              surf_query_pos=batch["surf_query_pos"],
-              vol_query_pos=batch["vol_query_pos"],
-              params=batch.get("params", None),
-          )
-          # 3. Stitches partitioned predictions back into the full (B, 101, 31, 2) tensor
-          full_displacements = self._reconstruct_displacement_field(y_hat_surf, y_hat_vol)
-          return {
-              "displacements": full_displacements,
-              "surf_pred": y_hat_surf,
-              "vol_pred": y_hat_vol,
-          }
-
-      def get_torch_module(self) -> torch.nn.Module:
-          return self.model
-  ```
 
 ### 4.3 `LossEngine` (Objective Formulation)
 * **Contract:** `compute(predictions: Dict[str, torch.Tensor], targets: Dict[str, torch.Tensor], batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, Dict[str, float]]`
@@ -277,258 +248,245 @@ Epoch [14/100] ── 45% [=====================>...........................] 25
 
 ---
 
-## 6. Complete Orchestration Workflow
+## 6. Complete Orchestration Workflow & State Machine
 
-The Python implementation below demonstrates the exact execution flow of [`TrainingEngine`](file:///home/arturobaltanas/University/Guided%20Research/src/training/engine.py):
+Rather than bundling data collation, forward inference, loss calculation, optimization, and logging into a rigid monolithic script, the system functions as a **finite state machine** coordinated by [`TrainingEngine`](file:///home/arturobaltanas/University/Guided%20Research/src/training/engine.py). 
 
-```python
-"""Orchestrator for surrogate model training, validation, and optimization."""
+Think of `TrainingEngine` as an orchestra conductor: it does not perform physical simulations or compute tensor arithmetic itself. Instead, it guides the training pipeline through well-defined lifecycle states, signaling specialized strategies ([`BatchLoader`](file:///home/arturobaltanas/University/Guided%20Research/src/training/batch_loaders.py), [`ModelWrapper`](file:///home/arturobaltanas/University/Guided%20Research/src/training/wrappers/smart_wrapper.py), [`LossEngine`](file:///home/arturobaltanas/University/Guided%20Research/src/training/losses.py), [`Optimizer`](file:///home/arturobaltanas/University/Guided%20Research/src/training/optimizers.py), [`CheckpointHandler`](file:///home/arturobaltanas/University/Guided%20Research/src/training/checkpoints.py), and [`TelemetryLogger`](file:///home/arturobaltanas/University/Guided%20Research/src/training/loggers.py)) at the exact right moment and passing clear data contracts between them.
 
-import time
-from pathlib import Path
-from typing import Any, Dict, List, Optional
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
+### 6.1 State Transition Diagram
 
-from src.training.interfaces import (
-    BatchLoader,
-    CheckpointHandler,
-    LossEngine,
-    ModelWrapper,
-    Optimizer,
-    TelemetryLogger,
-)
+The state diagram below illustrates the complete lifecycle of a training run, showing the flow of control and information across classes as well as the specific functions activated at each transition:
 
+```mermaid
+stateDiagram-v2
+    [*] --> Uninitialized
 
-class CliProgressMonitor(TelemetryLogger):
-    """Real-time terminal monitor displaying completion percentage, throughput, and dual ETA."""
+    state "1. Initialization & Device Placement" as Initialization {
+        [*] --> StrategyWiring
+        StrategyWiring --> HardwareBinding: model_wrapper.get_torch_module().to(device)
+        HardwareBinding --> [*]
+    }
 
-    def __init__(self) -> None:
-        self.job_start_time: float = 0.0
-        self.epoch_start_time: float = 0.0
-        self.total_batches: int = 0
-        self.total_epochs: int = 0
-        self.batch_times: List[float] = []
+    Uninitialized --> Initialization: TrainingEngine.__init__
+    Initialization --> EpochLoop: TrainingEngine.train
 
-    def start_epoch(self, epoch: int, total_epochs: int, total_batches: int) -> None:
-        if self.job_start_time == 0.0:
-            self.job_start_time = time.time()
-        self.epoch_start_time = time.time()
-        self.total_batches = total_batches
-        self.total_epochs = total_epochs
-        self.batch_times.clear()
+    state "2. Epoch Lifecycle Loop" as EpochLoop {
+        [*] --> EpochPreparation
+        EpochPreparation --> BatchIteration: logger.start_epoch & model.train
 
-    def update_batch(self, batch_idx: int, loss_val: float, lr: float) -> None:
-        now = time.time()
-        elapsed_epoch = now - self.epoch_start_time
-        avg_batch_time = elapsed_epoch / max(1, batch_idx)
-        self.batch_times.append(avg_batch_time)
-
-        remaining_batches = self.total_batches - batch_idx
-        epoch_eta_s = remaining_batches * avg_batch_time
-
-        progress_pct = (batch_idx / self.total_batches) * 100.0
-        bar_len = 25
-        filled = int(bar_len * (batch_idx / self.total_batches))
-        bar = "=" * filled + ">" + "." * max(0, bar_len - filled - 1)
-        if filled >= bar_len:
-            bar = "=" * bar_len
-
-        vram_mb = 0.0
-        if torch.cuda.is_available():
-            vram_mb = torch.cuda.max_memory_allocated() / (1024 ** 2)
-
-        print(
-            f"\rEpoch Batch [{batch_idx:02d}/{self.total_batches:02d}] "
-            f"[{bar}] {progress_pct:5.1f}% | "
-            f"Epoch ETA: {int(epoch_eta_s // 60):02d}:{int(epoch_eta_s % 60):02d} | "
-            f"Loss: {loss_val:.4e} | LR: {lr:.2e} | VRAM: {vram_mb:.0f}MB",
-            end="",
-            flush=True,
-        )
-
-    def end_epoch(
-        self,
-        epoch: int,
-        total_epochs: int,
-        train_metrics: Dict[str, float],
-        val_metrics: Dict[str, float],
-        lr: float,
-    ) -> None:
-        epoch_time = time.time() - self.epoch_start_time
-        total_elapsed = time.time() - self.job_start_time
-        remaining_epochs = total_epochs - epoch
-        avg_epoch_time = total_elapsed / epoch
-        total_eta_s = remaining_epochs * avg_epoch_time
-
-        print(
-            f"\n✔ Epoch [{epoch:03d}/{total_epochs:03d}] Finished in {epoch_time:.1f}s | "
-            f"Total Job ETA: {int(total_eta_s // 3600):02d}h {int((total_eta_s % 3600) // 60):02d}m | "
-            f"Train RelL2: {train_metrics.get('loss_total', 0.0):.4e} | "
-            f"Val RelL2: {val_metrics.get('loss_total', 0.0):.4e} | LR: {lr:.2e}"
-        )
-
-    def close(self) -> None:
-        total_time = time.time() - self.job_start_time
-        print(f"\n" + "=" * 70)
-        print(f"Training Complete in {int(total_time // 3600):02d}h {int((total_time % 3600) // 60):02d}m {int(total_time % 60):02d}s")
-        print("=" * 70)
-
-
-class TrainingEngine:
-    """Coordinates surrogate model training, validation, optimization, and checkpointing.
-
-    Parameters
-    ----------
-    model_wrapper : ModelWrapper
-        Wrapper housing and executing the neural network architecture.
-    batch_loader : BatchLoader
-        Strategy preparing raw partition samples into model-ready tensor batches.
-    loss_engine : LossEngine
-        Objective calculation strategy.
-    optimizer : Optimizer
-        Optimizer and learning rate schedule manager.
-    checkpointer : CheckpointHandler
-        Checkpoint persistence manager.
-    logger : TelemetryLogger
-        Telemetry and metrics logging observer.
-    """
-
-    def __init__(
-        self,
-        model_wrapper: ModelWrapper,
-        batch_loader: BatchLoader,
-        loss_engine: LossEngine,
-        optimizer: Optimizer,
-        checkpointer: CheckpointHandler,
-        logger: TelemetryLogger,
-    ) -> None:
-        self.model_wrapper = model_wrapper
-        self.batch_loader = batch_loader
-        self.loss_engine = loss_engine
-        self.optimizer = optimizer
-        self.checkpointer = checkpointer
-        self.logger = logger
-
-    def train(
-        self,
-        train_loader: DataLoader,
-        val_loader: DataLoader,
-        epochs: int,
-        device: torch.device,
-        max_grad_norm: Optional[float] = 1.0,
-    ) -> Dict[str, Any]:
-        """Execute full training and validation schedule.
-
-        Parameters
-        ----------
-        train_loader : DataLoader
-            DataLoader wrapping the training partition.
-        val_loader : DataLoader
-            DataLoader wrapping the validation partition.
-        epochs : int
-            Total training epochs.
-        device : torch.device
-            Hardware target device (e.g. cuda:0 or cpu).
-        max_grad_norm : Optional[float]
-            Maximum gradient norm threshold for clipping.
-
-        Returns
-        -------
-        Dict[str, Any]
-            Execution summary containing best validation loss and checkpoint paths.
-        """
-        best_val_loss = float("inf")
-        model = self.model_wrapper.get_torch_module().to(device)
-
-        for epoch in range(1, epochs + 1):
-            self.logger.start_epoch(epoch, epochs, len(train_loader))
-
-            # 1. Training step across batches
-            train_metrics = self._train_epoch(train_loader, device, max_grad_norm)
-
-            # 2. Validation step across batches
-            val_metrics = self._validate_epoch(val_loader, device)
-
-            # 3. Learning rate schedule step
-            current_lr = self.optimizer.epoch_step(val_metrics["loss_total"])
-
-            # 4. Telemetry logging
-            self.logger.end_epoch(epoch, epochs, train_metrics, val_metrics, current_lr)
-
-            # 5. Checkpointing
-            val_loss = val_metrics["loss_total"]
-            is_best = val_loss < best_val_loss
-            if is_best:
-                best_val_loss = val_loss
-
-            self.checkpointer.save(
-                epoch=epoch,
-                model=model,
-                metrics=val_metrics,
-                is_best=is_best,
-            )
-
-        self.logger.close()
-        return {
-            "best_val_loss": best_val_loss,
-            "best_checkpoint": self.checkpointer.get_best_checkpoint_path(),
+        state "3. Batch Training Pipeline (Inner Loop)" as BatchIteration {
+            [*] --> IngestionCollation
+            IngestionCollation --> ForwardExecution: DataLoader triggers batch_loader.loadDataset
+            ForwardExecution --> LossEvaluation: optimizer.zero_grad & model_wrapper.forward
+            LossEvaluation --> GradientOptimization: loss_engine.compute
+            GradientOptimization --> LiveTelemetry: optimizer.step and logger.update_batch
+            LiveTelemetry --> IngestionCollation: Next batch
+            LiveTelemetry --> [*]: Batches complete
         }
 
-    def _train_epoch(
-        self,
-        dataloader: DataLoader,
-        device: torch.device,
-        max_grad_norm: Optional[float],
-    ) -> Dict[str, float]:
-        """Execute single training epoch across batches."""
-        model = self.model_wrapper.get_torch_module()
-        model.train()
-        accumulated_losses: Dict[str, float] = {}
-        total_batches = len(dataloader)
+        BatchIteration --> ValidationState: TrainingEngine._validate_epoch
 
-        for batch_idx, batch in enumerate(dataloader, start=1):
-            batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
-            self.optimizer.zero_grad()
+        state "4. Scientific Validation (Eval Mode)" as ValidationState {
+            [*] --> DeactivateGradients
+            DeactivateGradients --> InferencePass: model.eval & torch.no_grad
+            InferencePass --> MetricAggregation: model_wrapper.forward -> loss_engine.compute
+            MetricAggregation --> [*]
+        }
 
-            # Forward pass executed via ModelWrapper
-            predictions = self.model_wrapper.forward(batch)
-            loss, loss_components = self.loss_engine.compute(predictions, batch["targets"], batch)
+        ValidationState --> LearningRateScheduling: optimizer.epoch_step
+        LearningRateScheduling --> EpochTelemetryReporting: logger.end_epoch
+        EpochTelemetryReporting --> CheckpointEvaluation: checkpointer.save
+        CheckpointEvaluation --> EpochPreparation: Next epoch (epoch < total_epochs)
+        CheckpointEvaluation --> [*]: Final epoch (epoch == total_epochs)
+    }
 
-            # Backward pass and gradient step via Optimizer
-            self.optimizer.step(loss, max_grad_norm=max_grad_norm)
-
-            for k, v in loss_components.items():
-                accumulated_losses[k] = accumulated_losses.get(k, 0.0) + v
-
-            current_lr = self.optimizer.get_learning_rate()
-            self.logger.update_batch(batch_idx, loss.item(), current_lr)
-
-        return {k: v / total_batches for k, v in accumulated_losses.items()}
-
-    def _validate_epoch(
-        self,
-        dataloader: DataLoader,
-        device: torch.device,
-    ) -> Dict[str, float]:
-        """Execute validation epoch with gradients disabled."""
-        model = self.model_wrapper.get_torch_module()
-        model.eval()
-        accumulated_losses: Dict[str, float] = {}
-        total_batches = len(dataloader)
-
-        with torch.no_grad():
-            for batch in dataloader:
-                batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
-                predictions = self.model_wrapper.forward(batch)
-                _, loss_components = self.loss_engine.compute(predictions, batch["targets"], batch)
-
-                for k, v in loss_components.items():
-                    accumulated_losses[k] = accumulated_losses.get(k, 0.0) + v
-
-        return {k: v / total_batches for k, v in accumulated_losses.items()}
+    EpochLoop --> PipelineCompletion: All epochs finished
+    PipelineCompletion --> [*]: logger.close and return execution summary
 ```
+
+---
+
+### 6.2 End-to-End Execution Sequence Diagram
+
+While the state diagram models lifecycle modes and conditions, the **sequence diagram** below reveals the precise chronological timeline of message exchanges and function calls between all components across the outer epoch loop, the inner training batch cycle, scientific validation, and atomic checkpointing:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Runner as CLI Runner / Script
+    participant Engine as TrainingEngine
+    participant DataLoader as PyTorch DataLoader
+    participant BatchLoader as BatchLoader
+    participant ModelWrapper as ModelWrapper
+    participant LossEngine as LossEngine
+    participant Optimizer as Optimizer
+    participant Checkpointer as CheckpointHandler
+    participant Logger as TelemetryLogger
+
+    Runner->>Engine: train(train_loader, val_loader, epochs, device)
+    Engine->>ModelWrapper: get_torch_module()
+    ModelWrapper-->>Engine: model (torch.nn.Module)
+    Note over Engine,ModelWrapper: Transfer model weights to accelerator via model.to(device)
+
+    loop Epoch Loop (epoch = 1 .. total_epochs)
+        Engine->>Logger: start_epoch(epoch, total_epochs, total_batches)
+        Note over Engine: model.train() (enable dropout & training dynamics)
+
+        loop Inner Batch Loop (for each batch in train_loader)
+            Engine->>DataLoader: iterate next batch
+            DataLoader->>BatchLoader: loadDataset(raw_samples) [collate_fn]
+            Note over BatchLoader: Scale [0, 1]^2, partition boundary (geo) & queries
+            BatchLoader-->>DataLoader: batch_dict (torch.Tensor)
+            DataLoader-->>Engine: batch_dict
+            Note over Engine: Transfer batch tensors to device via batch.to(device)
+
+            Engine->>Optimizer: zero_grad()
+            Engine->>ModelWrapper: forward(batch)
+            Note over ModelWrapper: Unpack keys, forward pass, stitch (B, 101, 31, 2)
+            ModelWrapper-->>Engine: predictions dict (displacements)
+
+            Engine->>LossEngine: compute(predictions, targets, batch)
+            Note over LossEngine: Relative L2 norm + contact penetration penalties
+            LossEngine-->>Engine: (scalar_loss, loss_components)
+
+            Engine->>Optimizer: step(scalar_loss, max_grad_norm)
+            Note over Optimizer: loss.backward(), clip_grad_norm_, AdamW.step()
+            Optimizer-->>Engine: gradient_norm
+
+            Engine->>Optimizer: get_learning_rate()
+            Optimizer-->>Engine: current_lr
+
+            Engine->>Logger: update_batch(batch_idx, loss_val, current_lr)
+            Note over Logger: Live terminal bar, ETA, throughput (samples/s), VRAM
+        end
+
+        Note over Engine: Execute _validate_epoch(val_loader, device)
+        Note over Engine: model.eval(), torch.no_grad() [freeze layers & gradients]
+
+        loop Validation Loop (for each val_batch in val_loader)
+            Engine->>DataLoader: iterate next val_batch
+            DataLoader->>BatchLoader: loadDataset(raw_samples)
+            BatchLoader-->>DataLoader: val_batch_dict
+            DataLoader-->>Engine: val_batch_dict
+            Engine->>ModelWrapper: forward(val_batch)
+            ModelWrapper-->>Engine: val_predictions
+            Engine->>LossEngine: compute(val_predictions, val_targets, val_batch)
+            LossEngine-->>Engine: (_, val_loss_components)
+        end
+
+        Engine->>Optimizer: epoch_step(val_loss_total)
+        Note over Optimizer: Update scheduler (e.g., CosineAnnealing / ReduceLROnPlateau)
+        Optimizer-->>Engine: updated_lr
+
+        Engine->>Logger: end_epoch(epoch, total_epochs, train_metrics, val_metrics, updated_lr)
+        Note over Logger: Print formatted summary banner, sync remote dashboards (WandB)
+
+        alt val_loss < best_val_loss (Record Validation Metric)
+            Engine->>Checkpointer: save(epoch, model, val_metrics, is_best=True)
+            Note over Checkpointer: Atomic write (.pt.tmp -> best_model.pt)
+            Checkpointer-->>Engine: best_model.pt path
+        else Regular Epoch (val_loss >= best_val_loss)
+            Engine->>Checkpointer: save(epoch, model, val_metrics, is_best=False)
+            Checkpointer-->>Engine: checkpoint_epoch_N.pt path
+        end
+    end
+
+    Engine->>Logger: close()
+    Note over Logger: Flush streams, print total wall-clock duration
+    Engine->>Checkpointer: get_best_checkpoint_path()
+    Checkpointer-->>Engine: best_checkpoint_path
+    Engine-->>Runner: execution_summary {"best_val_loss", "best_checkpoint"}
+```
+
+---
+
+### 6.3 Step-by-Step State Flow & Activated Functions
+
+#### State 1: Pipeline Initialization & Accelerator Placement
+* **Context & Role:** The training system is assembled via dependency injection. `TrainingEngine` does not hard-code any model or loss assumptions; it accepts the decoupled components as interfaces.
+* **Participating Classes:** [`TrainingEngine`](file:///home/arturobaltanas/University/Guided%20Research/src/training/engine.py), [`ModelWrapper`](file:///home/arturobaltanas/University/Guided%20Research/src/training/wrappers/smart_wrapper.py).
+* **Activated Functions:**
+  1. `TrainingEngine.__init__(model_wrapper, batch_loader, loss_engine, optimizer, checkpointer, logger)`: Stores references to all pipeline strategies.
+  2. `model_wrapper.get_torch_module()`: Queries the underlying PyTorch `nn.Module` from the wrapper.
+  3. `.to(device)`: Transfers network parameters and computational buffers to the target hardware device (e.g., `cuda:0` or `cpu`).
+* **Information Flow:** High-level hyperparameter configurations $\to$ strategy instances $\to$ GPU memory allocation.
+
+#### State 2: Epoch Initiation & Mode Configuration (Outer Loop)
+* **Context & Role:** Prepares the system for a new traversal through the training data, synchronizing timers and configuring stochastic network layers.
+* **Participating Classes:** [`TrainingEngine`](file:///home/arturobaltanas/University/Guided%20Research/src/training/engine.py), [`TelemetryLogger`](file:///home/arturobaltanas/University/Guided%20Research/src/training/loggers.py) (`CliProgressMonitor`), PyTorch `nn.Module`.
+* **Activated Functions:**
+  1. `TrainingEngine.train(train_loader, val_loader, epochs, device, max_grad_norm)`: Main entry point triggering the full multi-epoch loop.
+  2. `logger.start_epoch(epoch, total_epochs, total_batches)`: Resets epoch clocks, resets throughput trackers, and primes terminal progress bars.
+  3. `model.train()`: Switches internal neural layers (such as Dropout or Normalization layers) into active training mode.
+
+#### State 3: The Inner Batch Training Cycle (Information Transformation)
+For every mini-batch inside the training dataset, the system cycles through five sequential steps:
+
+1. **Data Ingestion & Domain Collation:**
+   - *Participating Classes:* PyTorch `DataLoader`, [`BatchLoader`](file:///home/arturobaltanas/University/Guided%20Research/src/training/batch_loaders.py) (`SMARTBatchLoader` or `StandardBatchLoader`).
+   - *Activated Function:* `batch_loader.loadDataset(samples)` (invoked by `DataLoader` via `collate_fn`).
+   - *Information Flow:* Reads raw NumPy simulation dictionaries from disk (`train.npz`). Normalizes physical millimeter coordinates into the unit box $[0, 1]^2$, partitions boundary geometries (`geo`) and query positions (`surf_query_pos`, `vol_query_pos`), packages them into PyTorch tensors with batch dimensions, and moves them to device memory via `.to(device)`.
+
+2. **Gradient Clearing & Forward Inference:**
+   - *Participating Classes:* [`Optimizer`](file:///home/arturobaltanas/University/Guided%20Research/src/training/optimizers.py), [`ModelWrapper`](file:///home/arturobaltanas/University/Guided%20Research/src/training/wrappers/smart_wrapper.py) (`SMARTModelWrapper`).
+   - *Activated Functions:*
+     - `optimizer.zero_grad()`: Flushes old parameter gradients in PyTorch's autograd graph.
+     - `model_wrapper.forward(batch)`: Unpacks model-specific tensor keys, feeds them to the deep learning model, and stitches partitioned outputs back into a unified physical tensor `(B, 101, 31, 2)`.
+   - *Information Flow:* Batch dictionary $\to$ model cross-attention passes $\to$ reconstructed `predictions` dictionary containing full displacement fields.
+
+3. **Objective Formulation & Error Quantification:**
+   - *Participating Classes:* [`LossEngine`](file:///home/arturobaltanas/University/Guided%20Research/src/training/losses.py) (`RelativeL2LossEngine` / `CompositePhysicsLossEngine`).
+   - *Activated Function:* `loss_engine.compute(predictions, targets, batch)`.
+   - *Information Flow:* Compares predicted displacement fields against ground-truth ABAQUS targets. Calculates the relative Frobenius norm along with optional physical penalties (e.g. punch penetration). Outputs a differentiable scalar `loss` for backpropagation and a dictionary of human-readable metric floats.
+
+4. **Backward Propagation, Gradient Clipping & Optimization:**
+   - *Participating Classes:* [`Optimizer`](file:///home/arturobaltanas/University/Guided%20Research/src/training/optimizers.py) (`StandardOptimizer`), PyTorch Autograd.
+   - *Activated Function:* `optimizer.step(loss, max_grad_norm)`.
+   - *Information Flow:* Triggers `loss.backward()` to populate parameter gradients, applies `torch.nn.utils.clip_grad_norm_` to safeguard against exploding gradients in transformer attention layers, and calls `AdamW.step()` to update model weights.
+
+5. **Intra-Batch Telemetry & Live Feedback:**
+   - *Participating Classes:* [`Optimizer`](file:///home/arturobaltanas/University/Guided%20Research/src/training/optimizers.py), [`TelemetryLogger`](file:///home/arturobaltanas/University/Guided%20Research/src/training/loggers.py) (`CliProgressMonitor`).
+   - *Activated Functions:*
+     - `optimizer.get_learning_rate()`: Queries current optimizer learning rate.
+     - `logger.update_batch(batch_idx, loss.item(), lr)`: Gathers current batch loss, queries CUDA VRAM via `torch.cuda.max_memory_allocated()`, computes dynamic sample throughput (`samples/s`), and renders the live interactive terminal progress line.
+
+#### State 4: Scientific Validation (Generalization Assessment)
+* **Context & Role:** Verifies whether the surrogate generalizes to holdout simulations without updating network weights or maintaining costly autograd graphs.
+* **Participating Classes:* [`TrainingEngine`](file:///home/arturobaltanas/University/Guided%20Research/src/training/engine.py), [`ModelWrapper`](file:///home/arturobaltanas/University/Guided%20Research/src/training/wrappers/smart_wrapper.py), [`LossEngine`](file:///home/arturobaltanas/University/Guided%20Research/src/training/losses.py), PyTorch `nn.Module`.
+* **Activated Functions:**
+  1. `TrainingEngine._validate_epoch(val_loader, device)`: Coordinates the validation traversal.
+  2. `model.eval()`: Freezes dropout and normalization statistics.
+  3. `torch.no_grad()`: Disables gradient tracking to halve memory usage and accelerate execution.
+  4. `batch_loader.loadDataset()` & `model_wrapper.forward(batch)`: Runs deterministic forward inference on validation samples.
+  5. `loss_engine.compute(predictions, targets, batch)`: Evaluates error on unobserved samples and accumulates validation metrics.
+
+#### State 5: Adaptive Learning Rate Scheduling
+* **Context & Role:** Adjusts the optimizer step size based on validation performance to ensure smooth convergence towards the global minimum.
+* **Participating Classes:** [`Optimizer`](file:///home/arturobaltanas/University/Guided%20Research/src/training/optimizers.py).
+* **Activated Function:** `optimizer.epoch_step(val_metrics["loss_total"])`.
+* **Information Flow:** Hands the validation metric to learning rate schedulers (e.g. `ReduceLROnPlateau` or `CosineAnnealingLR`), updating internal scheduler state and returning the active learning rate for the next epoch.
+
+#### State 6: Epoch Telemetry & Benchmark Logging
+* **Context & Role:** Aggregates epoch-wide metrics, provides immediate feedback in the console, and syncs data to experiment dashboards.
+* **Participating Classes:** [`TelemetryLogger`](file:///home/arturobaltanas/University/Guided%20Research/src/training/loggers.py) (`CliProgressMonitor`, `WandbLogger`, `CompositeTelemetryLogger`).
+* **Activated Function:** `logger.end_epoch(epoch, total_epochs, train_metrics, val_metrics, current_lr)`.
+* **Information Flow:** Formats total epoch duration, training vs. validation Relative $L_2$ error, and projected job finish ETA into a clean terminal report line, simultaneously transmitting metrics to remote tracking platforms.
+
+#### State 7: Atomic Checkpoint Persistence
+* **Context & Role:** Protects trained weights against unexpected hardware or cluster interruptions by safely persisting model states whenever validation metrics achieve a new record.
+* **Participating Classes:** [`CheckpointHandler`](file:///home/arturobaltanas/University/Guided%20Research/src/training/checkpoints.py) (`TorchCheckpointHandler`).
+* **Activated Functions:**
+  1. `checkpointer.save(epoch, model, metrics, is_best)`: Checks if current validation error improves upon `best_val_loss`.
+  2. Atomic write operation: Serializes model weights, optimizer state, and epoch counters into a temporary file (`.pt.tmp`) before renaming it to `best_model.pt`, preventing partial or corrupted checkpoint files.
+
+#### State 8: Teardown & Post-Training Handoff
+* **Context & Role:** Flushes system resources and delivers the best trained checkpoint to the scientific evaluation pipeline.
+* **Participating Classes:** [`TrainingEngine`](file:///home/arturobaltanas/University/Guided%20Research/src/training/engine.py), [`TelemetryLogger`](file:///home/arturobaltanas/University/Guided%20Research/src/training/loggers.py), [`CheckpointHandler`](file:///home/arturobaltanas/University/Guided%20Research/src/training/checkpoints.py).
+* **Activated Functions:**
+  1. `logger.close()`: Concludes logging, shuts down monitoring threads, and outputs final wall-clock duration.
+  2. `checkpointer.get_best_checkpoint_path()`: Retrieves the path to the best saved model.
+* **Information Flow:** Returns execution summary dictionary `{"best_val_loss": ..., "best_checkpoint": ...}`, handing off the trained model directly to [`EvaluationEngine`](file:///home/arturobaltanas/University/Guided%20Research/doc/arquitecture/evaluation_architecture.md).
 
 ---
 
