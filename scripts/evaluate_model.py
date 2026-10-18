@@ -161,6 +161,7 @@ def plot_displacement_contours(
     pred_u: np.ndarray,
     output_path: Path,
     sample_idx: int = 0,
+    title: Optional[str] = None,
 ) -> Path:
     """Export contour visualization comparing ground truth, surrogate, and error.
 
@@ -182,6 +183,8 @@ def plot_displacement_contours(
         Target image file path (.png).
     sample_idx : int, default=0
         Index of the test sample to visualize.
+    title : Optional[str], default=None
+        Custom suptitle for the 3-panel figure.
 
     Returns
     -------
@@ -200,29 +203,33 @@ def plot_displacement_contours(
     mag_pred = np.linalg.norm(u_pred, axis=-1)
     mag_diff = np.linalg.norm(u_pred - u_true, axis=-1)
 
+    norm_true = np.linalg.norm(u_true)
+    norm_diff = np.linalg.norm(u_pred - u_true)
+    rel_l2 = (norm_diff / (norm_true + 1e-8)) * 100.0 if norm_true > 1e-4 else 0.0
+
     # Deformed spatial mesh coordinates at final time step
     x_true = x0 + u_true[:, :, 0]
     y_true = y0 + u_true[:, :, 1]
     x_pred = x0 + u_pred[:, :, 0]
     y_pred = y0 + u_pred[:, :, 1]
 
-    # Rigid die position at final stroke:
+    # Rigid die position at active stroke:
     # In the raw dataset, die_contour is defined at its initial elevation (t=0).
-    # At the final increment (t=t_final), the rigid die strokes downwards into the workpiece.
+    # At active deformation increments, the rigid die strokes downwards into the workpiece.
     # The vertical stroke matches the deepest indentation of the contacting top surface (y-index 0).
     stroke = np.min(die_y) - np.min(y_true[:, 0])
     die_y_stroked = die_y - stroke
 
-    vmax = max(float(np.max(mag_true)), float(np.max(mag_pred)))
+    vmax = max(float(np.max(mag_true)), float(np.max(mag_pred)), 0.01)
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5), sharey=True)
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5.2), sharey=True)
 
     # 1. ABAQUS Ground Truth
     ax1 = axes[0]
     cf1 = ax1.contourf(x_true, y_true, mag_true, levels=50, cmap="viridis", vmin=0.0, vmax=vmax)
-    ax1.plot(die_x, die_y_stroked, "r--", linewidth=1.8, label="Rigid Die Profile (Final Stroke)")
+    ax1.plot(die_x, die_y_stroked, "r--", linewidth=1.8, label=f"Rigid Die (Stroke={stroke:.2f} mm)")
     ax1.plot(x0[:, 0], y0[:, 0], color="gray", linestyle=":", linewidth=1.2, alpha=0.8, label="Initial Outline (t=0)")
-    ax1.set_title("ABAQUS Ground Truth ||u|| [mm]", fontsize=12, fontweight="bold")
+    ax1.set_title(f"ABAQUS Ground Truth ||u|| [mm]\nPeak = {np.max(mag_true):.2f} mm", fontsize=11, fontweight="bold")
     ax1.set_xlabel("X Coordinate [mm]")
     ax1.set_ylabel("Y Coordinate [mm]")
     ax1.legend(loc="lower right", fontsize=8)
@@ -231,9 +238,9 @@ def plot_displacement_contours(
     # 2. Surrogate Prediction
     ax2 = axes[1]
     cf2 = ax2.contourf(x_pred, y_pred, mag_pred, levels=50, cmap="viridis", vmin=0.0, vmax=vmax)
-    ax2.plot(die_x, die_y_stroked, "r--", linewidth=1.8, label="Rigid Die Profile (Final Stroke)")
+    ax2.plot(die_x, die_y_stroked, "r--", linewidth=1.8, label=f"Rigid Die (Stroke={stroke:.2f} mm)")
     ax2.plot(x0[:, 0], y0[:, 0], color="gray", linestyle=":", linewidth=1.2, alpha=0.8, label="Initial Outline (t=0)")
-    ax2.set_title("SMART Predicted ||u|| [mm]", fontsize=12, fontweight="bold")
+    ax2.set_title(f"SMART Predicted ||u|| [mm]\nPeak = {np.max(mag_pred):.2f} mm", fontsize=11, fontweight="bold")
     ax2.set_xlabel("X Coordinate [mm]")
     ax2.legend(loc="lower right", fontsize=8)
     fig.colorbar(cf2, ax=ax2, label="Displacement [mm]")
@@ -241,16 +248,17 @@ def plot_displacement_contours(
     # 3. Absolute Error
     ax3 = axes[2]
     cf3 = ax3.contourf(x_true, y_true, mag_diff, levels=50, cmap="inferno")
-    ax3.plot(die_x, die_y_stroked, "r--", linewidth=1.8, label="Rigid Die Profile (Final Stroke)")
+    ax3.plot(die_x, die_y_stroked, "r--", linewidth=1.8, label=f"Rigid Die (Stroke={stroke:.2f} mm)")
     ax3.plot(x0[:, 0], y0[:, 0], color="gray", linestyle=":", linewidth=1.2, alpha=0.8, label="Initial Outline (t=0)")
-    ax3.set_title("Absolute Error ||u_pred - u_true|| [mm]", fontsize=12, fontweight="bold")
+    ax3.set_title(f"Absolute Error ||u_pred - u_true|| [mm]\nRel L2 = {rel_l2:.1f}% | L_inf = {np.max(mag_diff):.2f} mm", fontsize=11, fontweight="bold")
     ax3.set_xlabel("X Coordinate [mm]")
     ax3.legend(loc="lower right", fontsize=8)
     fig.colorbar(cf3, ax=ax3, label="Error [mm]")
 
+    main_title = title if title is not None else f"Surrogate Physical Verification (Sample {sample_idx:02d})"
     plt.suptitle(
-        f"Surrogate Physical Verification (Final Step t=19, Sample {sample_idx:02d})",
-        fontsize=14,
+        main_title,
+        fontsize=13,
         fontweight="bold",
         y=1.02,
     )
@@ -514,6 +522,24 @@ def main() -> None:
             target_norm=targets_dict,
             stats=stats,
         )
+        # Detect if dataset is temporal
+        is_temporal = "time_step_idx" in test_npz_data
+        if is_temporal:
+            time_step_idx = test_npz_data["time_step_idx"].flatten()
+            time_params = test_npz_data["time_params"].flatten()
+            sim_idx = test_npz_data["simulation_idx"].flatten()
+            # Select final time step for the first simulation
+            final_step_val = int(np.max(time_step_idx))
+            final_matches = np.where((time_step_idx == final_step_val) & (sim_idx == sim_idx[0]))[0]
+            primary_idx = int(final_matches[0]) if len(final_matches) > 0 else 0
+            sim_id = sim_idx[primary_idx]
+            step_id = time_step_idx[primary_idx]
+            t_val = time_params[primary_idx]
+            primary_title = f"Surrogate Physical Verification (Simulation {sim_id}, Final Step {step_id:02d}, t*={t_val:.3f})"
+        else:
+            primary_idx = 0
+            primary_title = f"Surrogate Physical Verification (Final Step, Sample {primary_idx:02d})"
+
         plot_path = output_dir / "evaluation_contours.png"
         plot_displacement_contours(
             coords_initial=initial_mesh,
@@ -521,9 +547,63 @@ def main() -> None:
             true_u=phys_targets["displacements"],
             pred_u=phys_preds["displacements"],
             output_path=plot_path,
-            sample_idx=0,
+            sample_idx=primary_idx,
+            title=primary_title,
         )
         summary["exported_artifacts"]["contour_plot"] = str(plot_path)
+
+        # For temporal datasets, generate additional cross-time and cross-sample verification contours
+        if is_temporal:
+            # 1. Multi-step time series for Sample 00
+            for step in [0, 5, 10, 15, 19]:
+                match_idx = np.where((time_step_idx == step) & (sim_idx == sim_idx[0]))[0]
+                if len(match_idx) > 0:
+                    s_idx = int(match_idx[0])
+                    s_path = output_dir / f"evaluation_contours_sample00_step{step:02d}_t{time_params[s_idx]:.3f}.png"
+                    s_title = f"Surrogate Verification: Simulation {sim_idx[s_idx]} (Sample 00), Step {step:02d}/19 (t*={time_params[s_idx]:.3f})"
+                    plot_displacement_contours(
+                        coords_initial=initial_mesh,
+                        die_contour=die_contours,
+                        true_u=phys_targets["displacements"],
+                        pred_u=phys_preds["displacements"],
+                        output_path=s_path,
+                        sample_idx=s_idx,
+                        title=s_title,
+                    )
+            # 2. Diverse simulation samples at final step
+            unique_sims = np.unique(sim_idx)
+            for k, sid in enumerate(unique_sims[:4]):
+                match_idx = np.where((time_step_idx == final_step_val) & (sim_idx == sid))[0]
+                if len(match_idx) > 0:
+                    s_idx = int(match_idx[0])
+                    s_path = output_dir / f"evaluation_contours_sample{k:02d}_sim{sid}_step19_t1.000.png"
+                    s_title = f"Surrogate Verification: Simulation {sid} (Sample {k:02d}), Step {final_step_val:02d}/19 (t*={time_params[s_idx]:.3f})"
+                    plot_displacement_contours(
+                        coords_initial=initial_mesh,
+                        die_contour=die_contours,
+                        true_u=phys_targets["displacements"],
+                        pred_u=phys_preds["displacements"],
+                        output_path=s_path,
+                        sample_idx=s_idx,
+                        title=s_title,
+                    )
+            # 3. Diverse simulation samples at intermediate step (step 10, t*=0.526)
+            for k, sid in enumerate(unique_sims[:4]):
+                match_idx = np.where((time_step_idx == 10) & (sim_idx == sid))[0]
+                if len(match_idx) > 0:
+                    s_idx = int(match_idx[0])
+                    s_path = output_dir / f"evaluation_contours_sample{k:02d}_sim{sid}_step10_t0.526.png"
+                    s_title = f"Surrogate Verification: Simulation {sid} (Sample {k:02d}), Step 10/19 (t*={time_params[s_idx]:.3f})"
+                    plot_displacement_contours(
+                        coords_initial=initial_mesh,
+                        die_contour=die_contours,
+                        true_u=phys_targets["displacements"],
+                        pred_u=phys_preds["displacements"],
+                        output_path=s_path,
+                        sample_idx=s_idx,
+                        title=s_title,
+                    )
+
         # Refresh exported Markdown and JSON reports with contour plot artifact
         engine.exporter.export(summary, output_dir)
 

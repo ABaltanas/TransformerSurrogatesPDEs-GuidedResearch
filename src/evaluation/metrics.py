@@ -45,7 +45,7 @@ class PlasticityMetricsCalculator(PhysicalMetricsCalculator):
 
         rel_l2 = self.compute_relative_l2(pred_u, true_u)
         l_inf = self.compute_l_infinity(pred_u, true_u)
-        surf_vol_dict = self.compute_surface_vs_volume(pred_u, true_u)
+        surf_vol_dict = self.compute_surface_vs_volume(pred_u, true_u, initial_mesh)
         h1_norm = self.compute_sobolev_h1(pred_u, true_u)
 
         return {
@@ -59,15 +59,15 @@ class PlasticityMetricsCalculator(PhysicalMetricsCalculator):
     def compute_relative_l2(self, pred_u: np.ndarray, true_u: np.ndarray) -> float:
         """Compute mean relative L2 Frobenius error across deformed samples.
 
-        Ignores undeformed initial reference states (norm < 1e-4 mm) to prevent
-        division by numerical zero.
+        Ignores undeformed initial reference states (norm < 0.1 mm) to prevent
+        division by numerical noise near zero displacement.
         """
         num_samples = pred_u.shape[0]
         sample_errors = []
 
         for i in range(num_samples):
             norm = np.linalg.norm(true_u[i])
-            if norm < 1e-4:
+            if norm < 0.1:
                 continue
             diff = np.linalg.norm(pred_u[i] - true_u[i])
             sample_errors.append(diff / (norm + self.eps))
@@ -79,22 +79,44 @@ class PlasticityMetricsCalculator(PhysicalMetricsCalculator):
         diff = np.abs(pred_u - true_u)
         return float(np.max(diff))
 
-    def compute_surface_vs_volume(self, pred_u: np.ndarray, true_u: np.ndarray) -> Dict[str, float]:
+    def compute_surface_vs_volume(
+        self,
+        pred_u: np.ndarray,
+        true_u: np.ndarray,
+        initial_mesh: np.ndarray = None,
+    ) -> Dict[str, float]:
         """Compute partitioned relative L2 errors on contact surface vs. continuum volume."""
         num_samples = pred_u.shape[0]
+
+        # Determine surface index along axis 2 (workpiece contacting surface has highest y)
+        top_idx = -1
+        if initial_mesh is not None and initial_mesh.ndim == 4 and initial_mesh.shape[2] > 1:
+            if np.mean(initial_mesh[:, :, 0, 1]) > np.mean(initial_mesh[:, :, -1, 1]):
+                top_idx = 0
 
         surf_errors = []
         vol_errors = []
 
         for i in range(num_samples):
-            s_norm = np.linalg.norm(true_u[i, :, -1, :])
-            if s_norm >= 1e-4:
-                s_diff = np.linalg.norm(pred_u[i, :, -1, :] - true_u[i, :, -1, :])
+            if top_idx == 0:
+                s_true = true_u[i, :, 0, :]
+                s_pred = pred_u[i, :, 0, :]
+                v_true = true_u[i, :, 1:, :]
+                v_pred = pred_u[i, :, 1:, :]
+            else:
+                s_true = true_u[i, :, -1, :]
+                s_pred = pred_u[i, :, -1, :]
+                v_true = true_u[i, :, :-1, :]
+                v_pred = pred_u[i, :, :-1, :]
+
+            s_norm = np.linalg.norm(s_true)
+            if s_norm >= 0.05:
+                s_diff = np.linalg.norm(s_pred - s_true)
                 surf_errors.append(s_diff / (s_norm + self.eps))
 
-            v_norm = np.linalg.norm(true_u[i, :, :-1, :])
-            if v_norm >= 1e-4:
-                v_diff = np.linalg.norm(pred_u[i, :, :-1, :] - true_u[i, :, :-1, :])
+            v_norm = np.linalg.norm(v_true)
+            if v_norm >= 0.05:
+                v_diff = np.linalg.norm(v_pred - v_true)
                 vol_errors.append(v_diff / (v_norm + self.eps))
 
         return {

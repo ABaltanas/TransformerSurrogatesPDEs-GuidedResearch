@@ -128,12 +128,26 @@ class MarkdownReportExporter(ReportExporter):
         has_training_plot = (output_dir / "training_curves.png").exists() or "training_curves_plot" in artifacts
         has_contour_plot = (output_dir / "evaluation_contours.png").exists() or "contour_plot" in artifacts
 
-        if has_training_plot or has_contour_plot:
+        has_trajectory_plot = (output_dir / "evaluation_trajectory_sample00.png").exists() or "trajectory_plot" in artifacts
+
+        if has_training_plot or has_contour_plot or has_trajectory_plot:
             content += "\n---\n\n### 5. Benchmark Visualizations\n"
             if has_training_plot:
                 content += "\n#### A. Training Convergence Curves & Error per Epoch\n![Training Convergence Curves](training_curves.png)\n"
             if has_contour_plot:
                 content += "\n#### B. Deformed Mesh & Physical Displacement Verification Contours\n![Surrogate Verification Contours](evaluation_contours.png)\n"
+            trajectory_panels = sorted(list(output_dir.glob("evaluation_trajectory_*.png")))
+            if trajectory_panels:
+                content += "\n#### C. Spatiotemporal Trajectory Evolution & Surrogate Accuracy\n"
+                for tp in trajectory_panels:
+                    content += f"![{tp.stem}]({tp.name})\n\n"
+
+            # Check for gallery plots
+            gallery_plots = sorted(list(output_dir.glob("evaluation_contours_sample*.png")))
+            if gallery_plots:
+                content += "\n#### D. Verification Gallery Across Time Steps and Test Samples\n"
+                for gp in gallery_plots:
+                    content += f"- [{gp.name}]({gp.name})\n"
 
         with open(report_path, "w", encoding="utf-8") as f:
             f.write(content)

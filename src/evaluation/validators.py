@@ -39,8 +39,9 @@ class DiePenetrationValidator(FeasibilityValidator):
         """
         num_samples = pred_coords.shape[0]
 
-        # Workpiece top surface coordinates (y = -1)
-        surf_y = pred_coords[:, :, -1, 1].astype(np.float64)  # (N, 101)
+        # Workpiece top surface coordinates (select boundary with higher elevation along axis 2)
+        top_idx = 0 if np.mean(pred_coords[:, :, 0, 1]) > np.mean(pred_coords[:, :, -1, 1]) else -1
+        surf_y = pred_coords[:, :, top_idx, 1].astype(np.float64)  # (N, 101)
         die_y = boundary_constraints[:, :, 1].astype(np.float64)  # (N, 101)
 
         # Penetration depth: Δ = max(0, surf_y - die_y)
