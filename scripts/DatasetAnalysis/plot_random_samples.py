@@ -637,9 +637,30 @@ def main() -> None:
 
     total_samples = coords.shape[0]
     is_temporal = (coords.ndim == 5)
+    is_unrolled_temporal = (
+        coords.ndim == 4 and "simulation_idx" in data and "time_step_idx" in data
+    )
 
-    print(f"Formulation:         {'Temporal (Time-dependent 5D)' if is_temporal else 'Static (Final Step only 4D)'}")
-    print(f"Total Samples:       {total_samples}")
+    if is_unrolled_temporal:
+        sim_ids = np.unique(data["simulation_idx"])
+        num_sims = len(sim_ids)
+        num_t = len(np.unique(data["time_step_idx"]))
+        coords = coords.reshape(num_sims, num_t, coords.shape[1], coords.shape[2], coords.shape[3]).transpose(0, 2, 3, 1, 4)
+        displacements = displacements.reshape(num_sims, num_t, displacements.shape[1], displacements.shape[2], displacements.shape[3]).transpose(0, 2, 3, 1, 4)
+        if coords_0 is not None:
+            coords_0 = coords_0[::num_t]
+        if die_boundary is not None:
+            die_boundary = die_boundary[::num_t]
+        total_samples = num_sims
+        is_temporal = True
+
+    formulation_desc = (
+        "Temporal (Unrolled Trajectory 4D -> Reshaped 5D)"
+        if is_unrolled_temporal
+        else ("Temporal (Time-dependent 5D)" if is_temporal else "Static (Final Step only 4D)")
+    )
+    print(f"Formulation:         {formulation_desc}")
+    print(f"Total Simulations:   {total_samples}")
 
     # Randomly select samples
     rng = np.random.default_rng(args.seed)
