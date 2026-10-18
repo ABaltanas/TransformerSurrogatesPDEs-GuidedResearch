@@ -262,3 +262,58 @@ def test_training_engine_end_to_end() -> None:
         assert results["best_checkpoint"].exists()
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_training_engine_amp_integration() -> None:
+    """Test TrainingEngine with automatic mixed precision enabled."""
+    temp_dir = Path(tempfile.mkdtemp())
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    try:
+        dataset = DummyPlasticityDataset(num_samples=4)
+        loader = SMARTBatchLoader()
+
+        train_dataloader = DataLoader(dataset, batch_size=2, collate_fn=loader.loadDataset)
+        val_dataloader = DataLoader(dataset, batch_size=2, collate_fn=loader.loadDataset)
+
+        config = {
+            "spatial_dim": 2,
+            "surface_channels": 2,
+            "volume_channels": 2,
+            "latent_dim": 32,
+            "latent_geometry_points": 16,
+            "subsampled_geometry_points": 32,
+            "num_encoder_decoder_blocks": 1,
+            "num_heads": 2,
+        }
+
+        wrapper = SMARTModelWrapper(config=config)
+        loss_engine = RelativeL2LossEngine()
+        optimizer = StandardOptimizer.create_adamw(
+            wrapper.get_torch_module().parameters(), lr=1e-3, epochs=2, use_amp=True
+        )
+        checkpointer = TorchCheckpointHandler(checkpoint_dir=temp_dir, keep_last_n=2)
+        logger = CliProgressMonitor(batch_size=2)
+
+        engine = TrainingEngine(
+            model_wrapper=wrapper,
+            batch_loader=loader,
+            loss_engine=loss_engine,
+            optimizer=optimizer,
+            checkpointer=checkpointer,
+            logger=logger,
+            use_amp=True,
+        )
+
+        results = engine.train(
+            train_loader=train_dataloader,
+            val_loader=val_dataloader,
+            epochs=2,
+            device=device,
+        )
+
+        assert "best_val_loss" in results
+        assert results["best_checkpoint"] is not None
+        assert results["best_checkpoint"].exists()
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+

@@ -51,6 +51,7 @@ class TrainingEngine:
         optimizer: Optimizer,
         checkpointer: CheckpointHandler,
         logger: TelemetryLogger,
+        use_amp: bool = False,
     ) -> None:
         self.model_wrapper = model_wrapper
         self.batch_loader = batch_loader
@@ -58,6 +59,7 @@ class TrainingEngine:
         self.optimizer = optimizer
         self.checkpointer = checkpointer
         self.logger = logger
+        self.use_amp = use_amp
 
     def train(
         self,
@@ -138,15 +140,17 @@ class TrainingEngine:
         model.train()
         accumulated_losses: Dict[str, float] = {}
         total_batches = len(dataloader)
+        amp_enabled = self.use_amp and device.type == "cuda"
 
         for batch_idx, raw_batch in enumerate(dataloader, start=1):
             # Transfer tensor batch to hardware device
             batch = self._transfer_batch_to_device(raw_batch, device)
             self.optimizer.zero_grad()
 
-            # Forward pass executed via ModelWrapper
-            predictions = self.model_wrapper.forward(batch)
-            loss, loss_components = self.loss_engine.compute(predictions, batch["targets"], batch)
+            # Forward pass executed via ModelWrapper with optional mixed precision
+            with torch.amp.autocast(device_type="cuda", dtype=torch.float16, enabled=amp_enabled):
+                predictions = self.model_wrapper.forward(batch)
+                loss, loss_components = self.loss_engine.compute(predictions, batch["targets"], batch)
 
             # Backward pass, gradient clipping, and weight update
             self.optimizer.step(loss, max_grad_norm=max_grad_norm)
@@ -170,12 +174,14 @@ class TrainingEngine:
         model.eval()
         accumulated_losses: Dict[str, float] = {}
         total_batches = len(dataloader)
+        amp_enabled = self.use_amp and device.type == "cuda"
 
         with torch.no_grad():
             for raw_batch in dataloader:
                 batch = self._transfer_batch_to_device(raw_batch, device)
-                predictions = self.model_wrapper.forward(batch)
-                _, loss_components = self.loss_engine.compute(predictions, batch["targets"], batch)
+                with torch.amp.autocast(device_type="cuda", dtype=torch.float16, enabled=amp_enabled):
+                    predictions = self.model_wrapper.forward(batch)
+                    _, loss_components = self.loss_engine.compute(predictions, batch["targets"], batch)
 
                 for k, v in loss_components.items():
                     accumulated_losses[k] = accumulated_losses.get(k, 0.0) + v

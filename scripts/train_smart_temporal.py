@@ -134,6 +134,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--subsampled_points", type=int, default=101, help="Points in subsampled geometry attention.")
     parser.add_argument("--num_blocks", type=int, default=6, help="Number of encoder-decoder transformer blocks.")
     parser.add_argument("--num_heads", type=int, default=8, help="Number of attention heads.")
+    parser.add_argument(
+        "--use_amp",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable automatic mixed precision (AMP FP16) for GPU training.",
+    )
     # Execution setup
     parser.add_argument(
         "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Target device."
@@ -161,6 +167,7 @@ def main() -> None:
     print(f"Models Save Directory:  {args.models_dir}")
     print(f"Conditioning Params:    parameter_channels={args.parameter_channels} (time t in [0, 1])")
     print(f"Epochs:                 {args.epochs} (Batch Size: {args.batch_size})")
+    print(f"Mixed Precision (AMP):  {args.use_amp}")
     print("=" * 80)
 
     # 2. Ingest Normalization Moments
@@ -227,6 +234,7 @@ def main() -> None:
         weight_decay=args.weight_decay,
         scheduler_type=scheduler_type,
         epochs=args.epochs,
+        use_amp=args.use_amp,
     )
 
     args.models_dir.mkdir(parents=True, exist_ok=True)
@@ -244,6 +252,7 @@ def main() -> None:
         optimizer=optimizer,
         checkpointer=checkpointer,
         logger=composite_logger,
+        use_amp=args.use_amp,
     )
 
     # 7. Execute Training Loop
@@ -262,7 +271,8 @@ def main() -> None:
     # 8. Post-Training Telemetry Analysis & KPI Chart Generation
     from src.evaluation.training_history import TrainingTelemetryAnalyzer
 
-    lr_str = f"{args.lr:.1e}" if abs(args.lr - 1e-4) >= 1e-6 else "1e-4"
+    raw_lr_str = f"{args.lr:.1e}".replace("e-0", "e-").replace("e+0", "e+")
+    lr_str = raw_lr_str.replace(".0e", "e") if ".0e" in raw_lr_str else raw_lr_str
     training_params = f"epochs_{args.epochs}_batch_{args.batch_size}_lr_{lr_str}"
     dataset_name = args.data_dir.name
     experiment_name = args.models_dir.name

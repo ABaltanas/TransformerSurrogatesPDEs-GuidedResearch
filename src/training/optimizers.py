@@ -31,10 +31,19 @@ class StandardOptimizer(Optimizer):
         optimizer: TorchOptimizer,
         scheduler: Optional[Any] = None,
         parameters: Optional[Iterable[nn.Parameter]] = None,
+        use_amp: bool = False,
+        scaler: Optional[torch.amp.GradScaler] = None,
     ) -> None:
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.parameters = list(parameters) if parameters is not None else None
+        self.use_amp = use_amp
+        if scaler is not None:
+            self.scaler = scaler
+        elif use_amp:
+            self.scaler = torch.amp.GradScaler("cuda", enabled=torch.cuda.is_available())
+        else:
+            self.scaler = None
 
     @classmethod
     def create_adamw(
@@ -45,6 +54,7 @@ class StandardOptimizer(Optimizer):
         scheduler_type: Optional[str] = "cosine",
         epochs: int = 100,
         min_lr: float = 1e-6,
+        use_amp: bool = False,
     ) -> "StandardOptimizer":
         """Factory constructor instantiating AdamW and standard schedulers.
 
@@ -77,7 +87,12 @@ class StandardOptimizer(Optimizer):
         elif scheduler_type == "plateau":
             scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=10, min_lr=min_lr)
 
-        return cls(optimizer=optimizer, scheduler=scheduler, parameters=params_list)
+        return cls(
+            optimizer=optimizer,
+            scheduler=scheduler,
+            parameters=params_list,
+            use_amp=use_amp,
+        )
 
     def zero_grad(self) -> None:
         """Reset parameter gradients."""
@@ -98,14 +113,22 @@ class StandardOptimizer(Optimizer):
         float
             Gradient norm before clipping (or 0.0 if not computed).
         """
-        loss.backward()
-
         grad_norm = 0.0
-        if max_grad_norm is not None and self.parameters is not None:
-            norm_tensor = nn.utils.clip_grad_norm_(self.parameters, max_grad_norm)
-            grad_norm = float(norm_tensor.item())
+        if self.scaler is not None and self.scaler.is_enabled():
+            self.scaler.scale(loss).backward()
+            if max_grad_norm is not None and self.parameters is not None:
+                self.scaler.unscale_(self.optimizer)
+                norm_tensor = nn.utils.clip_grad_norm_(self.parameters, max_grad_norm)
+                grad_norm = float(norm_tensor.item())
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+        else:
+            loss.backward()
+            if max_grad_norm is not None and self.parameters is not None:
+                norm_tensor = nn.utils.clip_grad_norm_(self.parameters, max_grad_norm)
+                grad_norm = float(norm_tensor.item())
+            self.optimizer.step()
 
-        self.optimizer.step()
         return grad_norm
 
     def epoch_step(self, metric: Optional[float] = None) -> float:
