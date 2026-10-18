@@ -1,0 +1,236 @@
+{
+    "dataset_name": "Geo-FNO/SMART Plasticity Temporal Benchmark",
+    "dataset_path": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/data/processed/ds_plasticity_temporal",
+    "loading_latency_ms": 20143.264223999722,
+    "consistency_checks": {
+        "partitions": {
+            "train_simulations": 900,
+            "train_samples": 18000,
+            "val_simulations": 7,
+            "val_samples": 140,
+            "test_simulations": 80,
+            "test_samples": 1600,
+            "total_simulations": 987,
+            "total_samples": 19740,
+            "zero_leakage_verified": true
+        },
+        "continuum_kinematics": {
+            "kinematic_identity_precision_error_mm": 3.485000000280625e-05,
+            "max_direct_coordinate_discrepancy_x_mm": 0.13826161999999798,
+            "max_direct_coordinate_discrepancy_y_mm": 0.7969649999999984,
+            "max_initial_contact_displacement_offset_mm": 0.7969608,
+            "simulations_with_initial_contact_offset": 527,
+            "simulations_offset_percentage": 58.56
+        },
+        "boundary_conditions": {
+            "bottom_edge_clamping_max_uy_mm": 0.0,
+            "bottom_edge_clamping_mean_uy_mm": 0.0,
+            "bottom_platen_dirichlet_satisfied": true,
+            "max_punch_indentation_stroke_mm": 6.5109687
+        },
+        "temporal_consistency": {
+            "discrete_timesteps": 20,
+            "time_range": [
+                0.0,
+                1.0
+            ],
+            "time_monotonic": true
+        }
+    },
+    "stats_summary": {
+        "die_boundary": {
+            "mean": -2.507456651331961,
+            "std": 24.481381678732685,
+            "min": -49.650001525878906,
+            "max": 26.103389739990234,
+            "per_channel": {
+                "mean": [
+                    -24.649997549780917,
+                    19.635084247116996
+                ],
+                "std": [
+                    14.577302168683909,
+                    2.365190141086109
+                ],
+                "min": [
+                    -49.650001525878906,
+                    14.104194641113281
+                ],
+                "max": [
+                    0.35000038146972656,
+                    26.103389739990234
+                ]
+            }
+        },
+        "coords_initial": {
+            "mean": -8.625112015906133,
+            "std": 19.314384418199836,
+            "min": -49.65,
+            "max": 14.908368,
+            "per_channel": {
+                "mean": [
+                    -24.649999874884237,
+                    7.39977584307197
+                ],
+                "std": [
+                    14.577377912000749,
+                    4.471787375654879
+                ],
+                "min": [
+                    -49.65,
+                    -0.099999905
+                ],
+                "max": [
+                    0.35000038,
+                    14.908368
+                ]
+            }
+        },
+        "coords": {
+            "mean": -8.717388913525966,
+            "std": 19.33810991567864,
+            "min": -54.83584,
+            "max": 15.063355,
+            "per_channel": {
+                "mean": [
+                    -24.67935623294901,
+                    7.244578405897086
+                ],
+                "std": [
+                    14.804091747529668,
+                    4.3812163082644116
+                ],
+                "min": [
+                    -54.83584,
+                    -0.10000706
+                ],
+                "max": [
+                    6.0633183,
+                    15.063355
+                ]
+            }
+        },
+        "displacements": {
+            "mean": -0.09238868045130562,
+            "std": 0.744012923645832,
+            "min": -6.5109687,
+            "max": 5.727515,
+            "per_channel": {
+                "mean": [
+                    -0.02935585403111306,
+                    -0.15542150687149817
+                ],
+                "std": [
+                    0.8979727313508289,
+                    0.5411184347639002
+                ],
+                "min": [
+                    -5.1979113,
+                    -6.5109687
+                ],
+                "max": [
+                    5.727515,
+                    0.9752675
+                ]
+            }
+        },
+        "target_all": {
+            "mean": -4.404888796988636,
+            "std": 14.347671672638901,
+            "min": -54.83584,
+            "max": 15.063355,
+            "per_channel": {
+                "mean": [
+                    -24.67935623294901,
+                    7.244578405897086,
+                    -0.02935585403111306,
+                    -0.15542150687149817
+                ],
+                "std": [
+                    14.804091747529668,
+                    4.3812163082644116,
+                    0.8979727313508289,
+                    0.5411184347639002
+                ],
+                "min": [
+                    -54.83584,
+                    -0.10000706,
+                    -5.1979113,
+                    -6.5109687
+                ],
+                "max": [
+                    6.0633183,
+                    15.063355,
+                    5.727515,
+                    0.9752675
+                ]
+            }
+        },
+        "time_steps": {
+            "mean": 0.5000000018626451,
+            "std": 0.30348849136849115,
+            "min": 0.0,
+            "max": 1.0
+        },
+        "time_params": {
+            "mean": 0.5000000018626451,
+            "std": 0.30348849136849115,
+            "min": 0.0,
+            "max": 1.0,
+            "per_channel": {
+                "mean": [
+                    0.5000000018626451
+                ],
+                "std": [
+                    0.30348849136849115
+                ],
+                "min": [
+                    0.0
+                ],
+                "max": [
+                    1.0
+                ]
+            }
+        },
+        "simulation_idx": {
+            "mean": 449.5,
+            "std": 259.80746076020733,
+            "min": 0.0,
+            "max": 899.0,
+            "per_channel": {
+                "mean": [
+                    449.5
+                ],
+                "std": [
+                    259.80746076020733
+                ],
+                "min": [
+                    0.0
+                ],
+                "max": [
+                    899.0
+                ]
+            }
+        },
+        "time_step_idx": {
+            "mean": 9.5,
+            "std": 5.766281297335398,
+            "min": 0.0,
+            "max": 19.0,
+            "per_channel": {
+                "mean": [
+                    9.5
+                ],
+                "std": [
+                    5.766281297335398
+                ],
+                "min": [
+                    0.0
+                ],
+                "max": [
+                    19.0
+                ]
+            }
+        }
+    }
+}
