@@ -28,6 +28,7 @@ from src.data import (
     MatlabImporter,
     NpzExporter,
     PlasticitySetup,
+    TemporalTrajectoryModeler,
 )
 
 
@@ -71,6 +72,11 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="Model static steady state at final increment (t = -1), dropping time dimension.",
     )
+    parser.add_argument(
+        "--temporal",
+        action="store_true",
+        help="Unroll all 20 time steps into parameter-conditioned trajectory samples (t in [0, 1]).",
+    )
     return parser.parse_args()
 
 
@@ -85,6 +91,7 @@ def main() -> None:
     print(f"Output Directory: {args.output_dir}")
     print(f"Split Allocation: Train={args.train_count}, Val={args.val_count}, Test={args.test_count}")
     print(f"Final Step Only:  {args.final_step_only}")
+    print(f"Temporal Unroll:  {args.temporal}")
     print("-" * 70)
 
     start_time: float = default_timer()
@@ -96,7 +103,27 @@ def main() -> None:
         splitter = DatasetSplitter()
         normalizer = DatasetNormalizer()
         exporter = NpzExporter()
-        modeler = ConsiderOnlyFinalStepModeler() if args.final_step_only else None
+
+        if args.final_step_only and args.temporal:
+            raise ValueError("Cannot specify both --final_step_only and --temporal simultaneously.")
+
+        if args.final_step_only:
+            modeler = ConsiderOnlyFinalStepModeler()
+            split_train = args.train_count
+            split_val = args.val_count
+            split_test = args.test_count
+        elif args.temporal:
+            modeler = TemporalTrajectoryModeler(include_initial_step=True)
+            # 20 time steps per simulation run
+            num_t = 20
+            split_train = args.train_count * num_t
+            split_val = args.val_count * num_t
+            split_test = args.test_count * num_t
+        else:
+            modeler = None
+            split_train = args.train_count
+            split_val = args.val_count
+            split_test = args.test_count
 
         # Build DatasetEngine orchestrator
         engine = DatasetEngine(
@@ -112,7 +139,7 @@ def main() -> None:
         saved_artifacts = engine.process(
             raw_path=args.raw_path,
             output_dir=args.output_dir,
-            split_ratios=(args.train_count, args.val_count, args.test_count),
+            split_ratios=(split_train, split_val, split_test),
         )
 
         elapsed: float = default_timer() - start_time

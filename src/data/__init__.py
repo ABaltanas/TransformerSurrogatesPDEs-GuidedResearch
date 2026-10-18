@@ -9,7 +9,11 @@ from src.data.interfaces import (
     FormatImporter,
     PhysicalSetup,
 )
-from src.data.modelers import CompositeModeler, ConsiderOnlyFinalStepModeler
+from src.data.modelers import (
+    CompositeModeler,
+    ConsiderOnlyFinalStepModeler,
+    TemporalTrajectoryModeler,
+)
 from src.data.normalizer import DatasetNormalizer
 from src.data.setups import PlasticitySetup
 from src.data.splitter import DatasetSplitter
@@ -18,6 +22,7 @@ __all__ = [
     "DatasetEngine",
     "DatasetModeler",
     "ConsiderOnlyFinalStepModeler",
+    "TemporalTrajectoryModeler",
     "CompositeModeler",
     "FormatImporter",
     "MatlabImporter",

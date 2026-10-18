@@ -57,16 +57,22 @@ class PlasticityMetricsCalculator(PhysicalMetricsCalculator):
         }
 
     def compute_relative_l2(self, pred_u: np.ndarray, true_u: np.ndarray) -> float:
-        """Compute mean relative L2 Frobenius error across samples."""
+        """Compute mean relative L2 Frobenius error across deformed samples.
+
+        Ignores undeformed initial reference states (norm < 1e-4 mm) to prevent
+        division by numerical zero.
+        """
         num_samples = pred_u.shape[0]
         sample_errors = []
 
         for i in range(num_samples):
+            norm = np.linalg.norm(true_u[i])
+            if norm < 1e-4:
+                continue
             diff = np.linalg.norm(pred_u[i] - true_u[i])
-            norm = np.linalg.norm(true_u[i]) + self.eps
-            sample_errors.append(diff / norm)
+            sample_errors.append(diff / (norm + self.eps))
 
-        return float(np.mean(sample_errors))
+        return float(np.mean(sample_errors)) if sample_errors else 0.0
 
     def compute_l_infinity(self, pred_u: np.ndarray, true_u: np.ndarray) -> float:
         """Compute the maximum pointwise absolute error in millimeters."""
@@ -81,19 +87,19 @@ class PlasticityMetricsCalculator(PhysicalMetricsCalculator):
         vol_errors = []
 
         for i in range(num_samples):
-            # Surface row (y = -1, y ≈ 15mm)
-            s_diff = np.linalg.norm(pred_u[i, :, -1, :] - true_u[i, :, -1, :])
-            s_norm = np.linalg.norm(true_u[i, :, -1, :]) + self.eps
-            surf_errors.append(s_diff / s_norm)
+            s_norm = np.linalg.norm(true_u[i, :, -1, :])
+            if s_norm >= 1e-4:
+                s_diff = np.linalg.norm(pred_u[i, :, -1, :] - true_u[i, :, -1, :])
+                surf_errors.append(s_diff / (s_norm + self.eps))
 
-            # Volume interior (y < -1)
-            v_diff = np.linalg.norm(pred_u[i, :, :-1, :] - true_u[i, :, :-1, :])
-            v_norm = np.linalg.norm(true_u[i, :, :-1, :]) + self.eps
-            vol_errors.append(v_diff / v_norm)
+            v_norm = np.linalg.norm(true_u[i, :, :-1, :])
+            if v_norm >= 1e-4:
+                v_diff = np.linalg.norm(pred_u[i, :, :-1, :] - true_u[i, :, :-1, :])
+                vol_errors.append(v_diff / (v_norm + self.eps))
 
         return {
-            "surface_rel_l2": float(np.mean(surf_errors)),
-            "volume_rel_l2": float(np.mean(vol_errors)),
+            "surface_rel_l2": float(np.mean(surf_errors)) if surf_errors else 0.0,
+            "volume_rel_l2": float(np.mean(vol_errors)) if vol_errors else 0.0,
         }
 
     def compute_sobolev_h1(self, pred_u: np.ndarray, true_u: np.ndarray) -> float:
@@ -102,17 +108,18 @@ class PlasticityMetricsCalculator(PhysicalMetricsCalculator):
         h1_errors = []
 
         for i in range(num_samples):
-            # Gradient along mesh axis 0 (xi) and axis 1 (eta)
-            pred_grad_x, pred_grad_y = np.gradient(pred_u[i], axis=(0, 1))
             true_grad_x, true_grad_y = np.gradient(true_u[i], axis=(0, 1))
+            norm_grad = np.sqrt(
+                np.sum(true_grad_x ** 2) + np.sum(true_grad_y ** 2)
+            )
+            if norm_grad < 1e-4:
+                continue
 
+            pred_grad_x, pred_grad_y = np.gradient(pred_u[i], axis=(0, 1))
             diff_grad = np.sqrt(
                 np.sum((pred_grad_x - true_grad_x) ** 2) + np.sum((pred_grad_y - true_grad_y) ** 2)
             )
-            norm_grad = np.sqrt(
-                np.sum(true_grad_x ** 2) + np.sum(true_grad_y ** 2)
-            ) + self.eps
 
-            h1_errors.append(diff_grad / norm_grad)
+            h1_errors.append(diff_grad / (norm_grad + self.eps))
 
-        return float(np.mean(h1_errors))
+        return float(np.mean(h1_errors)) if h1_errors else 0.0

@@ -28,6 +28,7 @@ from src.data import (
     MatlabImporter,
     NpzExporter,
     PlasticitySetup,
+    TemporalTrajectoryModeler,
 )
 
 
@@ -329,6 +330,44 @@ def test_dataset_engine_with_final_step_modeler() -> None:
         assert len(stats["coords"]["per_channel"]["mean"]) == 2
 
 
+def test_temporal_trajectory_modeler() -> None:
+    """Verify TemporalTrajectoryModeler unrolls 5D temporal trajectories into parameter-conditioned pairs."""
+    n_samples, nx, ny, nt = 3, 10, 5, 4
+    coords = np.arange(n_samples * nx * ny * nt * 2, dtype=np.float32).reshape(n_samples, nx, ny, nt, 2)
+    displacements = np.arange(n_samples * nx * ny * nt * 2, dtype=np.float32).reshape(n_samples, nx, ny, nt, 2)
+    die_boundary = np.ones((n_samples, nx, 2), dtype=np.float32) * 5.0
+    coords_initial = np.ones((n_samples, nx, ny, 2), dtype=np.float32) * 2.0
+    time_steps = np.linspace(0.0, 1.0, nt, dtype=np.float32)
+
+    fields = {
+        "coords": coords,
+        "displacements": displacements,
+        "die_boundary": die_boundary,
+        "coords_initial": coords_initial,
+        "time_steps": time_steps,
+    }
+
+    modeler = TemporalTrajectoryModeler(include_initial_step=True)
+    unrolled = modeler.modify(fields)
+
+    expected_samples = n_samples * nt
+    assert unrolled["coords"].shape == (expected_samples, nx, ny, 2)
+    assert unrolled["displacements"].shape == (expected_samples, nx, ny, 2)
+    assert unrolled["die_boundary"].shape == (expected_samples, nx, 2)
+    assert unrolled["coords_initial"].shape == (expected_samples, nx, ny, 2)
+    assert unrolled["time_params"].shape == (expected_samples, 1)
+    assert unrolled["simulation_idx"].shape == (expected_samples, 1)
+    assert unrolled["time_step_idx"].shape == (expected_samples, 1)
+
+    # Verify kinematic consistency for first simulation and all timesteps
+    for k in range(nt):
+        assert np.allclose(unrolled["coords"][k], coords[0, :, :, k, :])
+        assert np.allclose(unrolled["displacements"][k], displacements[0, :, :, k, :])
+        assert math.isclose(float(unrolled["time_params"][k, 0]), float(time_steps[k]), rel_tol=1e-5)
+        assert unrolled["simulation_idx"][k, 0] == 0
+        assert unrolled["time_step_idx"][k, 0] == k
+
+
 if __name__ == "__main__":
     tests = [
         test_matlab_importer,
@@ -340,9 +379,11 @@ if __name__ == "__main__":
         test_consider_only_final_step_modeler,
         test_composite_modeler,
         test_dataset_engine_with_final_step_modeler,
+        test_temporal_trajectory_modeler,
     ]
     for test_fn in tests:
         print(f"Running {test_fn.__name__}...", end=" ")
         test_fn()
         print("PASSED")
     print(f"\nAll {len(tests)} tests passed successfully!")
+

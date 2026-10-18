@@ -67,6 +67,15 @@ class PlasticityPartitionDataset(Dataset):
         self.coords: np.ndarray = (
             data["coords"] if "coords" in data else self.coords_initial + self.displacements
         )
+        self.time_params: Optional[np.ndarray] = (
+            data["time_params"] if "time_params" in data else None
+        )
+        self.simulation_idx: Optional[np.ndarray] = (
+            data["simulation_idx"] if "simulation_idx" in data else None
+        )
+        self.time_step_idx: Optional[np.ndarray] = (
+            data["time_step_idx"] if "time_step_idx" in data else None
+        )
         self.num_samples: int = self.die_boundary.shape[0]
 
     def __len__(self) -> int:
@@ -85,14 +94,17 @@ class PlasticityPartitionDataset(Dataset):
         -------
         Dict[str, np.ndarray]
             Dictionary containing 'die_boundary', 'coords_initial', 'coords',
-            and 'displacements'.
+            'displacements', and optional 'time_params'.
         """
-        return {
+        item = {
             "die_boundary": self.die_boundary[idx],
             "coords_initial": self.coords_initial[idx],
             "coords": self.coords[idx],
             "displacements": self.displacements[idx],
         }
+        if self.time_params is not None:
+            item["time_params"] = self.time_params[idx]
+        return item
 
 
 def infer_training_params(
@@ -361,6 +373,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--subsampled_points", type=int, default=101, help="Subsampled geometry points.")
     parser.add_argument("--num_blocks", type=int, default=6, help="Encoder-decoder transformer blocks.")
     parser.add_argument("--num_heads", type=int, default=8, help="Attention heads.")
+    parser.add_argument(
+        "--parameter_channels",
+        type=int,
+        default=None,
+        help="Conditioning parameter channels (auto-detected from test partition if None).",
+    )
 
     return parser.parse_args()
 
@@ -425,14 +443,20 @@ def main() -> None:
         collate_fn=batch_loader.loadDataset,
         num_workers=0,
     )
-    print(f"Loaded Test Partition:    {len(test_dataset)} simulations ({len(test_loader)} batches)")
+    print(f"Loaded Test Partition:    {len(test_dataset)} instances ({len(test_loader)} batches)")
+
+    # Auto-detect parameter conditioning
+    parameter_channels = args.parameter_channels
+    if parameter_channels is None:
+        parameter_channels = 1 if test_dataset.time_params is not None else 0
+    print(f"Conditioning Channels:    parameter_channels={parameter_channels}")
 
     # 5. Instantiate SMART ModelWrapper
     smart_config = {
         "spatial_dim": 2,
         "surface_channels": 2,
         "volume_channels": 2,
-        "parameter_channels": 0,
+        "parameter_channels": parameter_channels,
         "latent_dim": args.latent_dim,
         "latent_geometry_points": args.latent_geo_points,
         "subsampled_geometry_points": args.subsampled_points,

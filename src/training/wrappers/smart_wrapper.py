@@ -92,6 +92,8 @@ class SMARTModelWrapper(ModelWrapper):
         surf_query_pos = batch["surf_query_pos"]
         vol_query_pos = batch["vol_query_pos"]
         params = batch.get("params", None)
+        if params is not None and params.ndim == 2:
+            params = params.unsqueeze(1)  # (B, 1, cond_dim) to broadcast over spatial query points
 
         # Execute SMART forward pass
         y_hat_surf, y_hat_vol = self.model(

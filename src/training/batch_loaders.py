@@ -118,7 +118,7 @@ class SMARTBatchLoader(BatchLoader):
             std_vol_u = raw_vol_u
 
         # 4. Convert all prepared arrays to PyTorch tensors
-        return {
+        batch_dict: Dict[str, Any] = {
             "geo": torch.from_numpy(norm_die.astype(np.float32)),
             "surf_query_pos": torch.from_numpy(norm_surf_x0.astype(np.float32)),
             "vol_query_pos": torch.from_numpy(norm_vol_x0.astype(np.float32)),
@@ -130,6 +130,23 @@ class SMARTBatchLoader(BatchLoader):
             "coords_initial": torch.from_numpy(stacked_x0.astype(np.float32)),
             "die_boundary_raw": torch.from_numpy(stacked_die.astype(np.float32)),
         }
+
+        # 5. Extract optional conditioning parameter vector (e.g. normalized time t in [0, 1])
+        if len(samples) > 0 and "time_params" in samples[0]:
+            raw_params_list = [np.asarray(s["time_params"], dtype=np.float32) for s in samples]
+            stacked_params = np.stack(raw_params_list, axis=0)
+            if stacked_params.ndim == 1:
+                stacked_params = stacked_params[:, None]
+            batch_dict["params"] = torch.from_numpy(stacked_params.astype(np.float32))
+            batch_dict["time_params"] = batch_dict["params"]
+        elif len(samples) > 0 and "params" in samples[0]:
+            raw_params_list = [np.asarray(s["params"], dtype=np.float32) for s in samples]
+            stacked_params = np.stack(raw_params_list, axis=0)
+            if stacked_params.ndim == 1:
+                stacked_params = stacked_params[:, None]
+            batch_dict["params"] = torch.from_numpy(stacked_params.astype(np.float32))
+
+        return batch_dict
 
 
 class StandardBatchLoader(BatchLoader):

@@ -80,6 +80,24 @@ def test_smart_batch_loader() -> None:
     assert batch["geo"].max() <= 1.1
 
 
+def test_smart_batch_loader_with_time_params() -> None:
+    """Test SMARTBatchLoader correctly extracts and tensors time_params."""
+    dataset = DummyPlasticityDataset(num_samples=2)
+    sample_0 = dict(dataset[0])
+    sample_0["time_params"] = np.array([0.5], dtype=np.float32)
+    sample_1 = dict(dataset[1])
+    sample_1["time_params"] = np.array([1.0], dtype=np.float32)
+
+    loader = SMARTBatchLoader()
+    batch = loader.loadDataset([sample_0, sample_1])
+
+    assert "params" in batch
+    assert "time_params" in batch
+    assert batch["params"].shape == (2, 1)
+    assert batch["params"][0, 0].item() == pytest.approx(0.5)
+    assert batch["params"][1, 0].item() == pytest.approx(1.0)
+
+
 def test_standard_batch_loader() -> None:
     """Test StandardBatchLoader preserves full grid structure."""
     dataset = DummyPlasticityDataset(num_samples=2)
