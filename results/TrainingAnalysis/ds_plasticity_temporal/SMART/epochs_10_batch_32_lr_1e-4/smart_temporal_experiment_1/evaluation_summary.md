@@ -7,19 +7,19 @@
 ### 1. Physical Accuracy Metrics (Real Physical Units: mm)
 | Metric | Value | Reference Standard | Assessment |
 | :--- | :--- | :--- | :--- |
-| **Overall Relative L2 Error** | **150.74%** | < 5.0% | Adequate |
-| **Surface Contact L2 Error** | **57.06%** | < 6.0% | Moderate |
-| **Volume Interior L2 Error** | **150.19%** | < 5.0% | Moderate |
-| **Maximum Pointwise Error (L_inf)** | **6.213 mm** | Peak displacement: ~6.5 mm | Peak localized deviation |
-| **Sobolev H1 Semi-Norm Error** | **105.44%** | < 10.0% | Strain gradient fidelity |
+| **Overall Relative L2 Error** | **83.32%** | < 5.0% | Adequate |
+| **Surface Contact L2 Error** | **93.73%** | < 6.0% | Moderate |
+| **Volume Interior L2 Error** | **84.29%** | < 5.0% | Moderate |
+| **Maximum Pointwise Error (L_inf)** | **6.216 mm** | Peak displacement: ~6.5 mm | Peak localized deviation |
+| **Sobolev H1 Semi-Norm Error** | **105.32%** | < 10.0% | Strain gradient fidelity |
 
 ---
 
 ### 2. Solid Mechanics Feasibility (Die Non-Penetration Constraint)
 | Metric | Value | Constraint Threshold | Status |
 | :--- | :--- | :--- | :--- |
-| **Max Die Penetration Depth** | **0.0000 mm** | < 0.05 mm | **PASS** |
-| **Mean Die Penetration** | **0.0000 mm** | < 0.01 mm | **PASS** |
+| **Max Die Penetration Depth** | **0.0041 mm** | < 0.05 mm | **PASS** |
+| **Mean Die Penetration** | **0.0019 mm** | < 0.01 mm | **PASS** |
 | **Contact Violation Rate** | **0.0%** of boundary nodes | < 5.0% | **PASS** |
 
 ---
@@ -27,11 +27,11 @@
 ### 3. Computational Performance vs. Numerical Solver (ABAQUS FEM)
 | Hardware / Execution Metric | Evaluated Value |
 | :--- | :--- |
-| **Inference Latency per Sample** | **3.34 ms** |
-| **Peak GPU VRAM Allocation** | **725.0 MB** |
+| **Inference Latency per Sample** | **3.54 ms** |
+| **Peak GPU VRAM Allocation** | **376.5 MB** |
 | **Trainable Parameters** | **2,607,044** |
 | **Abaqus FEM Solver Runtime** | ~120.0 seconds / simulation |
-| **Surrogate Speedup Factor** | **35,966x Faster** |
+| **Surrogate Speedup Factor** | **33,881x Faster** |
 
 ---
 
@@ -58,3 +58,28 @@
 
 #### B. Deformed Mesh & Physical Displacement Verification Contours
 ![Surrogate Verification Contours](evaluation_contours.png)
+
+#### C. Spatiotemporal Trajectory Evolution & Surrogate Accuracy
+![evaluation_trajectory_sample00](evaluation_trajectory_sample00.png)
+
+![evaluation_trajectory_sim908_sample01](evaluation_trajectory_sim908_sample01.png)
+
+![evaluation_trajectory_sim909_sample02](evaluation_trajectory_sim909_sample02.png)
+
+![evaluation_trajectory_sim910_sample03](evaluation_trajectory_sim910_sample03.png)
+
+
+#### D. Verification Gallery Across Time Steps and Test Samples
+- [evaluation_contours_sample00_sim907_step10_t0.526.png](evaluation_contours_sample00_sim907_step10_t0.526.png)
+- [evaluation_contours_sample00_sim907_step19_t1.000.png](evaluation_contours_sample00_sim907_step19_t1.000.png)
+- [evaluation_contours_sample00_step00_t0.000.png](evaluation_contours_sample00_step00_t0.000.png)
+- [evaluation_contours_sample00_step05_t0.263.png](evaluation_contours_sample00_step05_t0.263.png)
+- [evaluation_contours_sample00_step10_t0.526.png](evaluation_contours_sample00_step10_t0.526.png)
+- [evaluation_contours_sample00_step15_t0.789.png](evaluation_contours_sample00_step15_t0.789.png)
+- [evaluation_contours_sample00_step19_t1.000.png](evaluation_contours_sample00_step19_t1.000.png)
+- [evaluation_contours_sample01_sim908_step10_t0.526.png](evaluation_contours_sample01_sim908_step10_t0.526.png)
+- [evaluation_contours_sample01_sim908_step19_t1.000.png](evaluation_contours_sample01_sim908_step19_t1.000.png)
+- [evaluation_contours_sample02_sim909_step10_t0.526.png](evaluation_contours_sample02_sim909_step10_t0.526.png)
+- [evaluation_contours_sample02_sim909_step19_t1.000.png](evaluation_contours_sample02_sim909_step19_t1.000.png)
+- [evaluation_contours_sample03_sim910_step10_t0.526.png](evaluation_contours_sample03_sim910_step10_t0.526.png)
+- [evaluation_contours_sample03_sim910_step19_t1.000.png](evaluation_contours_sample03_sim910_step19_t1.000.png)
