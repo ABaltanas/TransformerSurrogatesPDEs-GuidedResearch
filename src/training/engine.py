@@ -68,6 +68,8 @@ class TrainingEngine:
         epochs: int,
         device: torch.device,
         max_grad_norm: Optional[float] = 1.0,
+        start_epoch: int = 1,
+        best_val_loss: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Execute full training and validation schedule.
 
@@ -83,17 +85,26 @@ class TrainingEngine:
             Hardware target device (e.g. cuda:0 or cpu).
         max_grad_norm : Optional[float], default=1.0
             Maximum gradient norm threshold for clipping.
+        start_epoch : int, default=1
+            Starting epoch index (useful when resuming from a checkpoint).
+        best_val_loss : Optional[float], default=None
+            Initial best validation loss benchmark. If None, queries checkpointer or uses inf.
 
         Returns
         -------
         Dict[str, Any]
             Execution summary containing best validation loss and checkpoint paths.
         """
-        best_val_loss = float("inf")
+        if best_val_loss is None:
+            if hasattr(self.checkpointer, "get_best_val_loss"):
+                best_val_loss = self.checkpointer.get_best_val_loss()
+            else:
+                best_val_loss = float("inf")
+
         model = self.model_wrapper.get_torch_module()
         model.to(device)
 
-        for epoch in range(1, epochs + 1):
+        for epoch in range(start_epoch, epochs + 1):
             self.logger.start_epoch(epoch, epochs, len(train_loader))
 
             # 1. Training step across all batches in train_loader
@@ -114,11 +125,16 @@ class TrainingEngine:
             if is_best:
                 best_val_loss = val_loss
 
+            save_states = {}
+            if hasattr(self.optimizer, "get_state_dict"):
+                save_states = self.optimizer.get_state_dict()
+
             self.checkpointer.save(
                 epoch=epoch,
                 model=model,
                 metrics=val_metrics,
                 is_best=is_best,
+                **save_states,
             )
 
         self.logger.close()

@@ -162,3 +162,58 @@ class StandardOptimizer(Optimizer):
             Learning rate from the first parameter group.
         """
         return float(self.optimizer.param_groups[0]["lr"])
+
+    def get_state_dict(self) -> Dict[str, Any]:
+        """Retrieve state dictionaries for persistence.
+
+        Returns
+        -------
+        Dict[str, Any]
+            State dictionary containing optimizer, scheduler, and scaler states.
+        """
+        states: Dict[str, Any] = {
+            "optimizer_state_dict": self.optimizer.state_dict(),
+        }
+        if self.scheduler is not None:
+            states["scheduler_state_dict"] = self.scheduler.state_dict()
+        if self.scaler is not None and hasattr(self.scaler, "state_dict"):
+            states["scaler_state_dict"] = self.scaler.state_dict()
+        return states
+
+    def load_state(
+        self,
+        checkpoint: Dict[str, Any],
+        step_scheduler_to_epoch: Optional[int] = None,
+    ) -> None:
+        """Load optimizer, scaler, and scheduler states from a checkpoint.
+
+        Parameters
+        ----------
+        checkpoint : Dict[str, Any]
+            Loaded checkpoint payload.
+        step_scheduler_to_epoch : Optional[int], default=None
+            If scheduler_state_dict is missing from checkpoint, fast-forward the scheduler
+            by this number of epochs to reach the proper learning rate.
+        """
+        if "optimizer_state_dict" in checkpoint and checkpoint["optimizer_state_dict"] is not None:
+            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
+        if (
+            "scaler_state_dict" in checkpoint
+            and checkpoint["scaler_state_dict"] is not None
+            and self.scaler is not None
+        ):
+            self.scaler.load_state_dict(checkpoint["scaler_state_dict"])
+
+        if (
+            "scheduler_state_dict" in checkpoint
+            and checkpoint["scheduler_state_dict"] is not None
+            and self.scheduler is not None
+        ):
+            self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        elif step_scheduler_to_epoch is not None and step_scheduler_to_epoch > 0 and self.scheduler is not None:
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                for _ in range(step_scheduler_to_epoch):
+                    self.scheduler.step()

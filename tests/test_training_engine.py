@@ -317,3 +317,95 @@ def test_training_engine_amp_integration() -> None:
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
+
+def test_training_engine_resume() -> None:
+    """Test resuming TrainingEngine from a saved checkpoint."""
+    temp_dir = Path(tempfile.mkdtemp(prefix="test_training_resume_"))
+    device = torch.device("cpu")
+    try:
+        dataset = DummyPlasticityDataset(num_samples=4)
+        loader = SMARTBatchLoader()
+
+        train_dataloader = DataLoader(dataset, batch_size=2, collate_fn=loader.loadDataset)
+        val_dataloader = DataLoader(dataset, batch_size=2, collate_fn=loader.loadDataset)
+
+        config = {
+            "spatial_dim": 2,
+            "surface_channels": 2,
+            "volume_channels": 2,
+            "latent_dim": 32,
+            "latent_geometry_points": 16,
+            "subsampled_geometry_points": 32,
+            "num_encoder_decoder_blocks": 1,
+            "num_heads": 2,
+        }
+
+        # 1. Initial run: epochs 1-2
+        wrapper = SMARTModelWrapper(config=config)
+        loss_engine = RelativeL2LossEngine()
+        optimizer = StandardOptimizer.create_adamw(
+            wrapper.get_torch_module().parameters(), lr=1e-3, epochs=4
+        )
+        checkpointer = TorchCheckpointHandler(checkpoint_dir=temp_dir, keep_last_n=2)
+        logger = CliProgressMonitor(batch_size=2)
+
+        engine = TrainingEngine(
+            model_wrapper=wrapper,
+            batch_loader=loader,
+            loss_engine=loss_engine,
+            optimizer=optimizer,
+            checkpointer=checkpointer,
+            logger=logger,
+        )
+
+        results_phase1 = engine.train(
+            train_loader=train_dataloader,
+            val_loader=val_dataloader,
+            epochs=2,
+            device=device,
+        )
+
+        latest_path = checkpointer.get_latest_checkpoint_path()
+        assert latest_path is not None
+        assert latest_path.exists()
+        assert checkpointer.get_best_val_loss() == pytest.approx(results_phase1["best_val_loss"])
+
+        # 2. Resume run: epochs 3-4
+        wrapper_resumed = SMARTModelWrapper(config=config)
+        loaded_payload = checkpointer.load_checkpoint(latest_path, wrapper_resumed.get_torch_module())
+        assert loaded_payload["epoch"] == 2
+
+        optimizer_resumed = StandardOptimizer.create_adamw(
+            wrapper_resumed.get_torch_module().parameters(), lr=1e-3, epochs=4
+        )
+        optimizer_resumed.load_state(loaded_payload, step_scheduler_to_epoch=2)
+        # Verify learning rate was stepped to epoch 2
+        assert optimizer_resumed.get_learning_rate() < 1e-3
+
+        checkpointer_resumed = TorchCheckpointHandler(checkpoint_dir=temp_dir, keep_last_n=2)
+        engine_resumed = TrainingEngine(
+            model_wrapper=wrapper_resumed,
+            batch_loader=loader,
+            loss_engine=loss_engine,
+            optimizer=optimizer_resumed,
+            checkpointer=checkpointer_resumed,
+            logger=logger,
+        )
+
+        results_phase2 = engine_resumed.train(
+            train_loader=train_dataloader,
+            val_loader=val_dataloader,
+            epochs=4,
+            device=device,
+            start_epoch=loaded_payload["epoch"] + 1,
+            best_val_loss=checkpointer_resumed.get_best_val_loss(),
+        )
+
+        final_latest = checkpointer_resumed.get_latest_checkpoint_path()
+        assert final_latest is not None
+        ckpt_final = torch.load(final_latest, map_location="cpu", weights_only=False)
+        assert ckpt_final["epoch"] == 4
+        assert "optimizer_state_dict" in ckpt_final
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+

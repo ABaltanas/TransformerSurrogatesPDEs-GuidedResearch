@@ -140,6 +140,13 @@ def parse_args() -> argparse.Namespace:
         default=True,
         help="Enable automatic mixed precision (AMP FP16) for GPU training.",
     )
+    parser.add_argument(
+        "--resume",
+        nargs="?",
+        const="latest.pt",
+        default=None,
+        help="Resume training from checkpoint (e.g. latest.pt, checkpoint_epoch_0047.pt).",
+    )
     # Execution setup
     parser.add_argument(
         "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Target device."
@@ -240,6 +247,41 @@ def main() -> None:
     args.models_dir.mkdir(parents=True, exist_ok=True)
     checkpointer = TorchCheckpointHandler(checkpoint_dir=args.models_dir, keep_last_n=3)
 
+    # State restoration if resuming
+    start_epoch = 1
+    best_val_loss = None
+
+    if args.resume is not None:
+        ckpt_target = Path(args.resume)
+        if not ckpt_target.is_absolute() and not ckpt_target.exists():
+            ckpt_target = args.models_dir / ckpt_target
+
+        if not ckpt_target.exists():
+            latest_found = checkpointer.get_latest_checkpoint_path()
+            if latest_found is not None and latest_found.exists():
+                ckpt_target = latest_found
+            else:
+                raise FileNotFoundError(f"Resume checkpoint not found at: {ckpt_target}")
+
+        print(f"\nResuming training from checkpoint: {ckpt_target}")
+        loaded_payload = checkpointer.load_checkpoint(ckpt_target, torch_module)
+        resumed_epoch = loaded_payload.get("epoch", 0)
+        start_epoch = resumed_epoch + 1
+
+        optimizer.load_state(loaded_payload, step_scheduler_to_epoch=resumed_epoch)
+        best_val_loss = checkpointer.get_best_val_loss()
+
+        print(f"Resumed at Starting Epoch: {start_epoch} / {args.epochs}")
+        print(f"Active Learning Rate:     {optimizer.get_learning_rate():.4e}")
+        print(f"Historical Best Val Loss: {best_val_loss:.4e}\n")
+
+        if start_epoch > args.epochs:
+            print(
+                f"Checkpoint is already at epoch {resumed_epoch}, which meets or exceeds "
+                f"target epochs {args.epochs}. Nothing to train."
+            )
+            return
+
     cli_logger = CliProgressMonitor(batch_size=args.batch_size)
     json_logger = JsonMetricsLogger(log_file=args.models_dir / "training_metrics.jsonl")
     composite_logger = CompositeTelemetryLogger([cli_logger, json_logger])
@@ -262,6 +304,8 @@ def main() -> None:
         epochs=args.epochs,
         device=device,
         max_grad_norm=args.max_grad_norm,
+        start_epoch=start_epoch,
+        best_val_loss=best_val_loss,
     )
 
     print("\nTraining completed successfully!")

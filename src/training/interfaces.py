@@ -161,6 +161,7 @@ class CheckpointHandler(ABC):
         model: nn.Module,
         metrics: Dict[str, float],
         is_best: bool,
+        **extra_states: Any,
     ) -> Path:
         """Save a model checkpoint atomically to disk.
 
@@ -174,6 +175,8 @@ class CheckpointHandler(ABC):
             Validation and training metrics evaluated at this epoch.
         is_best : bool
             Flag indicating whether this checkpoint achieved the best validation performance.
+        **extra_states : Any
+            Additional states to persist (e.g. optimizer_state_dict, scheduler_state_dict).
 
         Returns
         -------
@@ -199,6 +202,24 @@ class CheckpointHandler(ABC):
         pass
 
     @abstractmethod
+    def load_checkpoint(self, checkpoint_path: Path, model: nn.Module) -> Dict[str, Any]:
+        """Load checkpoint weights from a specific path into the given model.
+
+        Parameters
+        ----------
+        checkpoint_path : Path
+            Path to the checkpoint file to load.
+        model : nn.Module
+            Target neural network module to populate with saved weights.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Checkpoint metadata dictionary.
+        """
+        pass
+
+    @abstractmethod
     def get_best_checkpoint_path(self) -> Optional[Path]:
         """Return the path to the best recorded checkpoint file.
 
@@ -206,6 +227,17 @@ class CheckpointHandler(ABC):
         -------
         Optional[Path]
             Path to the best checkpoint file, or None if no checkpoint has been saved.
+        """
+        pass
+
+    @abstractmethod
+    def get_latest_checkpoint_path(self) -> Optional[Path]:
+        """Return the path to the latest recorded checkpoint file.
+
+        Returns
+        -------
+        Optional[Path]
+            Path to the latest checkpoint file, or None if no checkpoint has been saved.
         """
         pass
 

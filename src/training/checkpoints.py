@@ -33,6 +33,7 @@ class TorchCheckpointHandler(CheckpointHandler):
         model: nn.Module,
         metrics: Dict[str, float],
         is_best: bool,
+        **extra_states: Any,
     ) -> Path:
         """Atomically persist a training checkpoint.
 
@@ -46,6 +47,8 @@ class TorchCheckpointHandler(CheckpointHandler):
             Evaluated training and validation metrics.
         is_best : bool
             Flag indicating if this checkpoint achieved the best validation score.
+        **extra_states : Any
+            Additional state dictionaries to persist (e.g. optimizer_state_dict).
 
         Returns
         -------
@@ -57,6 +60,7 @@ class TorchCheckpointHandler(CheckpointHandler):
             "model_state_dict": model.state_dict(),
             "metrics": metrics,
             "is_best": is_best,
+            **extra_states,
         }
 
         epoch_filename = self.checkpoint_dir / f"checkpoint_epoch_{epoch:04d}.pt"
@@ -95,6 +99,37 @@ class TorchCheckpointHandler(CheckpointHandler):
                     except OSError:
                         pass
 
+    def load_checkpoint(self, checkpoint_path: Any, model: nn.Module) -> Dict[str, Any]:
+        """Load checkpoint weights into the target model module.
+
+        Parameters
+        ----------
+        checkpoint_path : Union[str, Path]
+            Path to checkpoint file (absolute or relative to checkpoint_dir).
+        model : nn.Module
+            Model module to populate with weights.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Loaded checkpoint payload.
+
+        Raises
+        ------
+        FileNotFoundError
+            If checkpoint does not exist.
+        """
+        path = Path(checkpoint_path)
+        if not path.is_absolute() and not path.exists():
+            path = self.checkpoint_dir / path
+
+        if not path.exists():
+            raise FileNotFoundError(f"Checkpoint not found at: {path}")
+
+        checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        return checkpoint
+
     def load_best(self, model: nn.Module) -> Dict[str, Any]:
         """Load the best saved weights into the target model module.
 
@@ -117,9 +152,7 @@ class TorchCheckpointHandler(CheckpointHandler):
         if best_path is None or not best_path.exists():
             raise FileNotFoundError(f"No best checkpoint found in {self.checkpoint_dir}")
 
-        checkpoint = torch.load(best_path, map_location="cpu")
-        model.load_state_dict(checkpoint["model_state_dict"])
-        return checkpoint
+        return self.load_checkpoint(best_path, model)
 
     def get_best_checkpoint_path(self) -> Optional[Path]:
         """Return the path to the best recorded checkpoint file.
@@ -133,3 +166,40 @@ class TorchCheckpointHandler(CheckpointHandler):
         if expected.exists():
             return expected
         return self.best_checkpoint_path
+
+    def get_latest_checkpoint_path(self) -> Optional[Path]:
+        """Return the path to the latest recorded checkpoint file.
+
+        Returns
+        -------
+        Optional[Path]
+            Path to latest.pt, the newest intermediate checkpoint, or None.
+        """
+        latest = self.checkpoint_dir / "latest.pt"
+        if latest.exists():
+            return latest
+        if self.saved_checkpoints:
+            return self.saved_checkpoints[-1]
+        epoch_ckpts = sorted(self.checkpoint_dir.glob("checkpoint_epoch_*.pt"))
+        if epoch_ckpts:
+            return epoch_ckpts[-1]
+        return None
+
+    def get_best_val_loss(self) -> float:
+        """Return the best recorded validation total loss from best_model.pt, if available.
+
+        Returns
+        -------
+        float
+            Lowest recorded validation loss, or inf if no checkpoint exists.
+        """
+        best_path = self.get_best_checkpoint_path()
+        if best_path is not None and best_path.exists():
+            try:
+                ckpt = torch.load(best_path, map_location="cpu", weights_only=False)
+                metrics = ckpt.get("metrics", {})
+                if "loss_total" in metrics:
+                    return float(metrics["loss_total"])
+            except Exception:
+                pass
+        return float("inf")
