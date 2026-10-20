@@ -183,6 +183,7 @@ class StandardOptimizer(Optimizer):
     def load_state(
         self,
         checkpoint: Dict[str, Any],
+        device: Optional[torch.device] = None,
         step_scheduler_to_epoch: Optional[int] = None,
     ) -> None:
         """Load optimizer, scaler, and scheduler states from a checkpoint.
@@ -191,12 +192,16 @@ class StandardOptimizer(Optimizer):
         ----------
         checkpoint : Dict[str, Any]
             Loaded checkpoint payload.
+        device : Optional[torch.device], default=None
+            Target device to move optimizer tensor buffers (e.g. CUDA).
         step_scheduler_to_epoch : Optional[int], default=None
             If scheduler_state_dict is missing from checkpoint, fast-forward the scheduler
             by this number of epochs to reach the proper learning rate.
         """
         if "optimizer_state_dict" in checkpoint and checkpoint["optimizer_state_dict"] is not None:
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            if device is not None:
+                self.to(device)
 
         if (
             "scaler_state_dict" in checkpoint
@@ -217,3 +222,10 @@ class StandardOptimizer(Optimizer):
                 warnings.simplefilter("ignore")
                 for _ in range(step_scheduler_to_epoch):
                     self.scheduler.step()
+
+    def to(self, device: torch.device) -> None:
+        """Move optimizer state tensors to the specified hardware device."""
+        for state in self.optimizer.state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.to(device)

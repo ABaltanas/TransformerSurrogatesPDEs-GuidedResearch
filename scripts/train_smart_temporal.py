@@ -268,7 +268,9 @@ def main() -> None:
         resumed_epoch = loaded_payload.get("epoch", 0)
         start_epoch = resumed_epoch + 1
 
-        optimizer.load_state(loaded_payload, step_scheduler_to_epoch=resumed_epoch)
+        optimizer.load_state(
+            loaded_payload, device=device, step_scheduler_to_epoch=resumed_epoch
+        )
         best_val_loss = checkpointer.get_best_val_loss()
 
         print(f"Resumed at Starting Epoch: {start_epoch} / {args.epochs}")

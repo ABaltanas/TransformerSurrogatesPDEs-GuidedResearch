@@ -103,6 +103,8 @@ class TrainingEngine:
 
         model = self.model_wrapper.get_torch_module()
         model.to(device)
+        if hasattr(self.optimizer, "to"):
+            self.optimizer.to(device)
 
         for epoch in range(start_epoch, epochs + 1):
             self.logger.start_epoch(epoch, epochs, len(train_loader))
