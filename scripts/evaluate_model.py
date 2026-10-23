@@ -110,6 +110,7 @@ class PlasticityPartitionDataset(Dataset):
 def infer_training_params(
     model_dir: Path,
     explicit_params: Optional[str] = None,
+    batch_size: Optional[int] = None,
 ) -> str:
     """Infer or format a standardized training parameter descriptor string.
 
@@ -122,6 +123,8 @@ def infer_training_params(
         Directory where model checkpoints and metrics reside.
     explicit_params : Optional[str], default=None
         User-provided training parameters string. If provided, returned as-is.
+    batch_size : Optional[int], default=None
+        Evaluation batch size fallback if not explicitly defined.
 
     Returns
     -------
@@ -134,7 +137,7 @@ def infer_training_params(
     metrics_file = model_dir / "training_metrics.jsonl"
     total_epochs = 50
     lr_str = "1e-4"
-    batch_size = 16
+    b_size = batch_size or 16
 
     if metrics_file.exists():
         try:
@@ -144,14 +147,12 @@ def infer_training_params(
                     total_epochs = int(first_line["total_epochs"])
                 if "lr" in first_line:
                     lr_val = float(first_line["lr"])
-                    if abs(lr_val - 1e-4) < 1e-6:
-                        lr_str = "1e-4"
-                    else:
-                        lr_str = f"{lr_val:.1e}"
+                    raw_lr = f"{lr_val:.1e}".replace("e-0", "e-").replace("e+0", "e+")
+                    lr_str = raw_lr.replace(".0e", "e") if ".0e" in raw_lr else raw_lr
         except Exception:
             pass
 
-    return f"epochs_{total_epochs}_batch_{batch_size}_lr_{lr_str}"
+    return f"epochs_{total_epochs}_batch_{b_size}_lr_{lr_str}"
 
 
 def plot_displacement_contours(
@@ -268,6 +269,109 @@ def plot_displacement_contours(
     fig.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
+    return output_path
+
+
+def plot_temporal_trajectory_grid(
+    coords_initial: np.ndarray,
+    die_contour: np.ndarray,
+    true_u: np.ndarray,
+    pred_u: np.ndarray,
+    time_step_idx: np.ndarray,
+    time_params: np.ndarray,
+    sim_idx: np.ndarray,
+    target_sim_id: int,
+    output_path: Path,
+    title: Optional[str] = None,
+) -> Path:
+    """Render 5x3 multi-timestep trajectory rollout matrix comparison for a single simulation.
+
+    Columns: Ground Truth ||u||, SMART Predicted ||u||, Absolute Error ||u_pred - u_true||
+    Rows: t=0, t=5, t=10, t=15, t=19
+    """
+    match_indices = np.where(sim_idx == target_sim_id)[0]
+    if len(match_indices) == 0:
+        return output_path
+
+    steps_to_plot = [0, 5, 10, 15, 19]
+    fig, axes = plt.subplots(len(steps_to_plot), 3, figsize=(18, 18), sharex=True, sharey=True)
+
+    # Compute global vmax across steps for this simulation
+    vmax_list = []
+    for s in steps_to_plot:
+        s_match = np.where((sim_idx == target_sim_id) & (time_step_idx == s))[0]
+        if len(s_match) > 0:
+            idx = s_match[0]
+            vmax_list.append(np.max(np.linalg.norm(true_u[idx], axis=-1)))
+            vmax_list.append(np.max(np.linalg.norm(pred_u[idx], axis=-1)))
+    vmax = max(max(vmax_list) if vmax_list else 1.0, 0.01)
+
+    for row_i, step in enumerate(steps_to_plot):
+        s_match = np.where((sim_idx == target_sim_id) & (time_step_idx == step))[0]
+        if len(s_match) == 0:
+            continue
+        idx = int(s_match[0])
+        x0 = coords_initial[idx, :, :, 0]
+        y0 = coords_initial[idx, :, :, 1]
+        die_x = die_contour[idx, :, 0]
+        die_y = die_contour[idx, :, 1]
+
+        u_tr = true_u[idx]
+        u_pr = pred_u[idx]
+
+        m_tr = np.linalg.norm(u_tr, axis=-1)
+        m_pr = np.linalg.norm(u_pr, axis=-1)
+        m_diff = np.linalg.norm(u_pr - u_tr, axis=-1)
+
+        x_tr = x0 + u_tr[:, :, 0]
+        y_tr = y0 + u_tr[:, :, 1]
+        x_pr = x0 + u_pr[:, :, 0]
+        y_pr = y0 + u_pr[:, :, 1]
+
+        stroke = float(np.min(die_y) - np.min(y_tr[:, 0]))
+        die_y_st = die_y - stroke
+
+        # Col 0: ABAQUS GT
+        ax0 = axes[row_i, 0]
+        cf0 = ax0.contourf(x_tr, y_tr, m_tr, levels=50, cmap="viridis", vmin=0.0, vmax=vmax)
+        ax0.plot(die_x, die_y_st, "r--", linewidth=1.5)
+        ax0.plot(x0[:, 0], y0[:, 0], color="gray", linestyle=":", linewidth=1.0, alpha=0.7)
+        t_val = time_params[idx] if idx < len(time_params) else 0.0
+        ax0.set_ylabel(f"Step {step:02d} (t*={t_val:.3f})\nY [mm]", fontsize=10, fontweight="bold")
+        if row_i == 0:
+            ax0.set_title("ABAQUS Ground Truth ||u|| [mm]", fontsize=11, fontweight="bold")
+
+        # Col 1: SMART Predicted
+        ax1 = axes[row_i, 1]
+        cf1 = ax1.contourf(x_pr, y_pr, m_pr, levels=50, cmap="viridis", vmin=0.0, vmax=vmax)
+        ax1.plot(die_x, die_y_st, "r--", linewidth=1.5)
+        ax1.plot(x0[:, 0], y0[:, 0], color="gray", linestyle=":", linewidth=1.0, alpha=0.7)
+        if row_i == 0:
+            ax1.set_title("SMART Predicted ||u|| [mm]", fontsize=11, fontweight="bold")
+
+        # Col 2: Error
+        ax2 = axes[row_i, 2]
+        cf2 = ax2.contourf(x_tr, y_tr, m_diff, levels=50, cmap="inferno")
+        ax2.plot(die_x, die_y_st, "r--", linewidth=1.5)
+        ax2.plot(x0[:, 0], y0[:, 0], color="gray", linestyle=":", linewidth=1.0, alpha=0.7)
+        norm_tr = np.linalg.norm(u_tr)
+        norm_df = np.linalg.norm(u_pr - u_tr)
+        rel_l2 = (norm_df / (norm_tr + 1e-8)) * 100.0 if norm_tr > 1e-4 else 0.0
+        ax2.set_ylabel(f"Rel L2: {rel_l2:.1f}%\nMax: {np.max(m_diff):.2f} mm", fontsize=9)
+        ax2.yaxis.set_label_position("right")
+        if row_i == 0:
+            ax2.set_title("Absolute Error ||u_pred - u_true|| [mm]", fontsize=11, fontweight="bold")
+
+    axes[-1, 0].set_xlabel("X Coordinate [mm]")
+    axes[-1, 1].set_xlabel("X Coordinate [mm]")
+    axes[-1, 2].set_xlabel("X Coordinate [mm]")
+
+    main_title = title or f"Spatiotemporal Trajectory Rollout: Simulation {target_sim_id}"
+    plt.suptitle(main_title, fontsize=14, fontweight="bold", y=1.01)
+    plt.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
     return output_path
 
 
@@ -398,7 +502,9 @@ def main() -> None:
     # 1. Resolve Output Directory Hierarchy: <dataset>/<model>/<training_params>/<experiment>
     dataset_name = args.dataset_name or args.data_dir.name
     model_name = args.model_name
-    training_params = infer_training_params(args.model_dir, args.training_params)
+    training_params = infer_training_params(
+        args.model_dir, args.training_params, batch_size=args.batch_size
+    )
     experiment_name = args.experiment or args.model_dir.name
 
     output_dir = (
@@ -603,6 +709,25 @@ def main() -> None:
                         sample_idx=s_idx,
                         title=s_title,
                     )
+
+            # 4. Spatiotemporal Trajectory Evolution Grid Panels
+            for k, sid in enumerate(unique_sims[:4]):
+                t_panel_path = output_dir / f"evaluation_trajectory_sim{sid}_sample{k:02d}.png"
+                plot_temporal_trajectory_grid(
+                    coords_initial=initial_mesh,
+                    die_contour=die_contours,
+                    true_u=phys_targets["displacements"],
+                    pred_u=phys_preds["displacements"],
+                    time_step_idx=time_step_idx,
+                    time_params=time_params,
+                    sim_idx=sim_idx,
+                    target_sim_id=int(sid),
+                    output_path=t_panel_path,
+                    title=f"Spatiotemporal Trajectory Rollout: Simulation {sid} (Test Sample {k:02d})",
+                )
+                if k == 0:
+                    import shutil
+                    shutil.copy2(t_panel_path, output_dir / "evaluation_trajectory_sample00.png")
 
         # Refresh exported Markdown and JSON reports with contour plot artifact
         engine.exporter.export(summary, output_dir)
