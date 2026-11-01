@@ -135,6 +135,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_blocks", type=int, default=6, help="Number of encoder-decoder transformer blocks.")
     parser.add_argument("--num_heads", type=int, default=8, help="Number of attention heads.")
     parser.add_argument(
+        "--pos_scale_factor",
+        type=float,
+        default=1000.0,
+        help="Coordinate scaling factor before positional encoding.",
+    )
+    parser.add_argument(
+        "--dropout",
+        type=float,
+        default=0.0,
+        help="Dropout probability applied within attention and feed-forward layers.",
+    )
+    parser.add_argument(
         "--use_amp",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -222,8 +234,8 @@ def main() -> None:
         "subsampled_geometry_points": args.subsampled_points,
         "num_encoder_decoder_blocks": args.num_blocks,
         "num_heads": args.num_heads,
-        "pos_scale_factor": 1000.0,
-        "dropout": 0.0,
+        "pos_scale_factor": args.pos_scale_factor,
+        "dropout": args.dropout,
     }
 
     model_wrapper = SMARTModelWrapper(config=smart_config)

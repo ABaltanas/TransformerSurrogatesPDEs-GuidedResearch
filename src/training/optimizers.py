@@ -1,6 +1,6 @@
 """Optimization and learning rate schedule managers."""
 
-from typing import Any, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional
 import torch
 import torch.nn as nn
 from torch.optim import AdamW, Optimizer as TorchOptimizer
