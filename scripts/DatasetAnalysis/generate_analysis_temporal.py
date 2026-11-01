@@ -287,15 +287,19 @@ def plot_spatiotemporal_mesh_sequence(
         for j in range(0, x_g.shape[1], step_sub):
             ax.plot(x_g[:, j], y_g[:, j], color="black", linewidth=0.25, alpha=0.35)
 
-        # Die boundary profile overlay
-        ax.plot(
+        # Rigid press surface profile overlay at active stroke location
+        stroke = float(np.min(die[:, 1]) - np.min(y_g[:, 0]))
+        die_y_stroked = die[:, 1] - stroke
+        line = ax.plot(
             die[:, 0],
-            die[:, 1],
-            color="#e11d48",
-            linewidth=1.1,
-            linestyle="--",
-            alpha=0.85,
+            die_y_stroked,
+            color="red",
+            linewidth=1.3,
+            linestyle="-",
+            alpha=0.95,
+            label="Press surface location",
         )
+        ax.legend(handles=line, labels=["Press surface location"], loc="upper right", fontsize=7.5, framealpha=0.85)
 
         ax.set_title(f"Step {t_step} ($t^*={t_n:.2f}$)\nmax|u|={np.max(u_mag):.2f} mm", fontsize=9.5, fontweight="bold")
         ax.set_xlabel("$x$ [mm]", fontsize=9.5)

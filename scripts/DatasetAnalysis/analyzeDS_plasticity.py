@@ -228,7 +228,29 @@ def plot_mesh_deformation_sequence(
         for j in range(0, x_grid.shape[1], step_sub):
             ax.plot(x_grid[:, j], y_grid[:, j], color="black", linewidth=0.3, alpha=0.4)
 
-        ax.set_title(f"Step $t={t_step}$ ($t^*={t_step/19:.2f}$)", fontsize=11, fontweight="bold")
+        # Rigid press surface line overlay at active stroke location
+        if "die_boundary" in train_data:
+            die = train_data["die_boundary"][sample_idx]
+            stroke = float(np.min(die[:, 1]) - np.min(y_grid[:, 0]))
+            die_y_stroked = die[:, 1] - stroke
+            press_line = ax.plot(
+                die[:, 0],
+                die_y_stroked,
+                color="red",
+                linestyle="-",
+                linewidth=1.4,
+                alpha=0.95,
+                label="Press surface location",
+            )
+            ax.legend(
+                handles=press_line,
+                labels=["Press surface location"],
+                loc="upper right",
+                fontsize=7.5,
+                framealpha=0.85,
+            )
+
+        ax.set_title(f"Step $t={t_step}$ ($t^*={t_step/19:.2f}$)\nStroke={stroke:.2f} mm", fontsize=10, fontweight="bold")
         ax.set_xlabel("$x$ [mm]", fontsize=10)
         if ax_idx == 0:
             ax.set_ylabel("$y$ [mm]", fontsize=10)
@@ -238,7 +260,12 @@ def plot_mesh_deformation_sequence(
     cbar = fig.colorbar(mesh_plot, ax=axes.ravel().tolist(), orientation="horizontal", fraction=0.06, pad=0.25)
     cbar.set_label("Displacement Magnitude $|\mathbf{u}|$ [mm]", fontsize=11)
 
-    fig.suptitle(f"Sample #{sample_idx}: Spatiotemporal Mesh Deformation & Indentation", fontsize=14, fontweight="bold", y=1.02)
+    fig.suptitle(
+        f"Sample #{sample_idx}: Spatiotemporal Mesh Deformation & Indentation\n(Red line emulates the press surface location)",
+        fontsize=13,
+        fontweight="bold",
+        y=1.04,
+    )
     fig.savefig(save_path, bbox_inches="tight")
     plt.close(fig)
 
@@ -290,6 +317,22 @@ def plot_displacement_field_contours(
     axes[2].set_xlabel("$x$ [mm]")
     axes[2].set_ylabel("$y$ [mm]")
     axes[2].set_aspect("equal")
+
+    # Rigid press line overlay in red at right location
+    if "die_boundary" in train_data:
+        die = train_data["die_boundary"][sample_idx]
+        stroke = float(np.min(die[:, 1]) - np.min(y_grid[:, 0]))
+        die_y_stroked = die[:, 1] - stroke
+        for ax in axes:
+            line = ax.plot(
+                die[:, 0],
+                die_y_stroked,
+                color="red",
+                linestyle="-",
+                linewidth=1.4,
+                label="Press surface location",
+            )
+        axes[0].legend(handles=line, labels=["Press surface location"], loc="upper right", fontsize=8.5, framealpha=0.85)
 
     plt.tight_layout()
     fig.savefig(save_path)

@@ -141,6 +141,8 @@ def render_dimension_tag(
     if other_info:
         other_items = [f"{k}: {shape}" for k, shape in other_info.items()]
         lines.append("AUX DIMS:    " + " | ".join(other_items))
+    if is_temporal:
+        lines.append("NOTE: Red line emulates the press surface location during indentation")
 
     tag_text = "\n".join(lines)
 
@@ -226,15 +228,25 @@ def plot_sample_temporal_all_steps(
         for j in range(0, x_g.shape[1], step_sub):
             ax.plot(x_g[:, j], y_g[:, j], color="black", linewidth=0.25, alpha=0.35)
 
-        # Die boundary overlay
+        # Press surface line overlay at active stroke location
         if die_boundary is not None:
-            ax.plot(
+            stroke = float(np.min(die_boundary[:, 1]) - np.min(y_g[:, 0]))
+            die_y_stroked = die_boundary[:, 1] - stroke
+            press_line = ax.plot(
                 die_boundary[:, 0],
-                die_boundary[:, 1],
-                color="#e11d48",
-                linestyle="--",
-                linewidth=0.9,
-                alpha=0.85,
+                die_y_stroked,
+                color="red",
+                linestyle="-",
+                linewidth=1.3,
+                alpha=0.95,
+                label="Press surface location",
+            )
+            ax.legend(
+                handles=press_line,
+                labels=["Press surface location"],
+                loc="upper right",
+                fontsize=6.5,
+                framealpha=0.85,
             )
 
         t_norm = t / max(nt - 1, 1)
@@ -355,7 +367,25 @@ def plot_temporal_overview_summary(
                 ax.plot(x_g[:, j], y_g[:, j], color="black", linewidth=0.2, alpha=0.3)
 
             if die_boundary is not None:
-                ax.plot(die_boundary[s_idx, :, 0], die_boundary[s_idx, :, 1], color="#e11d48", linestyle="--", linewidth=0.8)
+                stroke = float(np.min(die_boundary[s_idx, :, 1]) - np.min(y_g[:, 0]))
+                die_y_stroked = die_boundary[s_idx, :, 1] - stroke
+                line = ax.plot(
+                    die_boundary[s_idx, :, 0],
+                    die_y_stroked,
+                    color="red",
+                    linestyle="-",
+                    linewidth=1.1,
+                    alpha=0.95,
+                    label="Press surface location",
+                )
+                if c_idx == 1:
+                    ax.legend(
+                        handles=line,
+                        labels=["Press surface location"],
+                        loc="upper right",
+                        fontsize=6.0,
+                        framealpha=0.85,
+                    )
 
             t_norm = t_step / max(nt - 1, 1)
             ax.set_title(f"Step t={t_step} (t*={t_norm:.2f})\nmax|u|={np.max(u_mag):.2f} mm", fontsize=8.5)
@@ -430,7 +460,9 @@ def plot_sample_static_solution(
         ax0.plot(x_g[:, j], y_g[:, j], color="black", linewidth=0.25, alpha=0.35)
 
     if die_boundary is not None:
-        ax0.plot(die_boundary[:, 0], die_boundary[:, 1], color="#e11d48", linewidth=1.5, label="Die Profile $S_d(x)$")
+        stroke = float(np.min(die_boundary[:, 1]) - np.min(y_g[:, 0]))
+        die_y_stroked = die_boundary[:, 1] - stroke
+        ax0.plot(die_boundary[:, 0], die_y_stroked, color="red", linewidth=1.5, label="Press surface location")
         ax0.legend(loc="upper right", fontsize=8)
 
     ax0.set_title(f"Deformed Mesh (coords: {coords.shape}) vs Ref (dotted)", fontsize=9.5, fontweight="bold")
@@ -538,7 +570,17 @@ def plot_static_overview_summary(
         for j in range(0, x_g.shape[1], step_sub):
             ax_mesh.plot(x_g[:, j], y_g[:, j], color="black", linewidth=0.2, alpha=0.3)
         if die_boundary is not None:
-            ax_mesh.plot(die_boundary[s_idx, :, 0], die_boundary[s_idx, :, 1], color="#e11d48", linestyle="--", linewidth=0.8)
+            stroke = float(np.min(die_boundary[s_idx, :, 1]) - np.min(y_g[:, 0]))
+            die_y_stroked = die_boundary[s_idx, :, 1] - stroke
+            line = ax_mesh.plot(
+                die_boundary[s_idx, :, 0],
+                die_y_stroked,
+                color="red",
+                linestyle="-",
+                linewidth=1.0,
+                label="Press surface location",
+            )
+            ax_mesh.legend(handles=[line[0]], labels=["Press surface location"], loc="upper right", fontsize=6.5)
         ax_mesh.set_title(f"Deformed Mesh (Static Final Step)\nmax|u|={np.max(u_mag):.2f} mm | shape={x_g.shape}", fontsize=8.5)
         ax_mesh.set_aspect("equal", "box")
         fig.colorbar(pm_mesh, ax=ax_mesh, fraction=0.046, pad=0.04)
