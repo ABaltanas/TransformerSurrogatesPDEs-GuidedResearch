@@ -498,7 +498,7 @@ The classes and strategies specified in this architecture are organized in the c
 | :--- | :--- | :--- |
 | **Interfaces** | `BatchLoader`, `ModelWrapper`, `LossEngine`, `Optimizer`, `CheckpointHandler`, `TelemetryLogger` | [`src/training/interfaces.py`](file:///home/arturobaltanas/University/Guided%20Research/src/training/interfaces.py) |
 | **Batch Preparation** | `SMARTBatchLoader`, `StandardBatchLoader` | [`src/training/batch_loaders.py`](file:///home/arturobaltanas/University/Guided%20Research/src/training/batch_loaders.py) |
-| **Model Wrappers** | `SMARTModelWrapper`, `UPDEtModelWrapper`, `BaselineFNOWrapper` | [`src/training/wrappers/smart_wrapper.py`](file:///home/arturobaltanas/University/Guided%20Research/src/training/wrappers/smart_wrapper.py) |
+| **Model Wrappers** | [`SMARTModelWrapper`](file:///home/arturobaltanas/University/GuidedResearch/doc/arquitecture/model_wrappers/smart_model_wrapper.md), `UPDEtModelWrapper`, `BaselineFNOWrapper` | [`src/training/wrappers/smart_wrapper.py`](file:///home/arturobaltanas/University/GuidedResearch/src/training/wrappers/smart_wrapper.py) |
 | **Loss Formulations** | `RelativeL2LossEngine`, `MSELossEngine`, `CompositePhysicsLossEngine` | [`src/training/losses.py`](file:///home/arturobaltanas/University/Guided%20Research/src/training/losses.py) |
 | **Optimization** | `StandardOptimizer` | [`src/training/optimizers.py`](file:///home/arturobaltanas/University/Guided%20Research/src/training/optimizers.py) |
 | **Persistence** | `TorchCheckpointHandler` | [`src/training/checkpoints.py`](file:///home/arturobaltanas/University/Guided%20Research/src/training/checkpoints.py) |
