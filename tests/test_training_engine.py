@@ -25,6 +25,7 @@ from src.training.optimizers import (
     Lion,
     NaNOrDivergenceKillSwitch,
     OptimizerController,
+    OptimizerFactory,
     StandardOptimizer,
 )
 from src.training.wrappers.smart_wrapper import SMARTModelWrapper
@@ -616,4 +617,109 @@ def test_standard_optimizer_backward_compatibility() -> None:
 
     state = opt.get_state_dict()
     assert "optimizer_state_dict" in state
+
+
+def test_optimizer_factory_typed_constructors() -> None:
+    """Test OptimizerFactory explicit create_adamw and create_lion methods."""
+    model = nn.Linear(4, 2)
+
+    # Test AdamW creation via factory
+    adamw_ctrl = OptimizerFactory.create_adamw(
+        model_parameters=model.parameters(),
+        lr=1e-3,
+        scheduler_type="warmup_cosine",
+        epochs=50,
+    )
+    assert isinstance(adamw_ctrl, OptimizerController)
+    assert isinstance(adamw_ctrl.optimizer, torch.optim.AdamW)
+    assert adamw_ctrl.get_learning_rate() == pytest.approx(1e-4)  # 0.1 start_factor
+
+    # Test Lion creation via factory
+    lion_ctrl = OptimizerFactory.create_lion(
+        model_parameters=model.parameters(),
+        lr=5e-5,
+        betas=(0.95, 0.98),
+        scheduler_type="cosine",
+        epochs=30,
+    )
+    assert isinstance(lion_ctrl, OptimizerController)
+    assert isinstance(lion_ctrl.optimizer, Lion)
+    assert lion_ctrl.get_learning_rate() == pytest.approx(5e-5)
+
+
+def test_optimizer_factory_dynamic_create() -> None:
+    """Test OptimizerFactory.create with string identifiers and error handling."""
+    model = nn.Linear(3, 1)
+
+    opt_adamw = OptimizerFactory.create(
+        optimizer_type="adamw",
+        model_parameters=model.parameters(),
+        lr=2e-4,
+    )
+    assert isinstance(opt_adamw.optimizer, torch.optim.AdamW)
+
+    opt_lion = OptimizerFactory.create(
+        optimizer_type="lion",
+        model_parameters=model.parameters(),
+        lr=1e-4,
+    )
+    assert isinstance(opt_lion.optimizer, Lion)
+
+    with pytest.raises(ValueError, match="Unsupported optimizer_type"):
+        OptimizerFactory.create(
+            optimizer_type="unknown_opt",
+            model_parameters=model.parameters(),
+        )
+
+
+def test_write_parametros_txt_audit_file() -> None:
+    """Test write_parametros_txt generation in temporal training script."""
+    import argparse
+    from scripts.train_smart_temporal import write_parametros_txt
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="test_parametros_"))
+    try:
+        fpath = temp_dir / "parametros.txt"
+        args = argparse.Namespace(
+            data_dir=Path("data/processed/ds_plasticity_temporal"),
+            models_dir=temp_dir,
+            results_dir=Path("results/TrainingAnalysis"),
+            epochs=50,
+            batch_size=1,
+            optimizer="lion",
+            lr=1e-4,
+            weight_decay=1e-4,
+            scheduler="warmup_cosine",
+            early_stopping_patience=None,
+            max_grad_norm=1.0,
+            use_amp=False,
+            device="cpu",
+            seed=42,
+            parameter_channels=1,
+            latent_dim=256,
+            latent_geo_points=101,
+            subsampled_points=101,
+            num_blocks=8,
+            num_heads=8,
+            pos_scale_factor=1000.0,
+            dropout=0.0,
+        )
+        summary = {"best_val_loss": 0.0421, "best_checkpoint": temp_dir / "best_model.pt"}
+        kpis = {"best_epoch": 45, "val_loss_reduction_pct": 85.2}
+        write_parametros_txt(fpath, args, summary=summary, kpis=kpis, duration_s=120.5)
+
+        assert fpath.exists()
+        text = fpath.read_text(encoding="utf-8")
+        assert "SMART SURROGATE MODEL - TRAINING CONFIGURATION AUDIT" in text
+        assert "optimizer:                    lion" in text
+        assert "scheduler:                    warmup_cosine" in text
+        assert "latent_dim:                   256" in text
+        assert "latent_geo_points:            101" in text
+        assert "num_blocks:                   8" in text
+        assert "Best Validation Loss:         4.210000e-02" in text
+        assert "Total Val Loss Reduction:     85.2%" in text
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 
