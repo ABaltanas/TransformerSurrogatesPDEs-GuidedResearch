@@ -32,6 +32,7 @@ from src.training.optimizers import (
     Lion,
     NaNOrDivergenceKillSwitch,
     OptimizerController,
+    OptimizerFactory,
     StandardOptimizer,
 )
 from src.training.wrappers.smart_wrapper import SMARTModelWrapper
@@ -56,6 +57,7 @@ __all__ = [
     "CompositePhysicsLossEngine",
     # Optimizer & Strategies
     "OptimizerController",
+    "OptimizerFactory",
     "StandardOptimizer",
     "Lion",
     "NaNOrDivergenceKillSwitch",

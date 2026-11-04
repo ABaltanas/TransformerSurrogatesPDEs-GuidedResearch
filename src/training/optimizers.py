@@ -304,171 +304,16 @@ class OptimizerController(Optimizer):
         else:
             self.scaler = None
 
-    @staticmethod
-    def _build_scheduler(
-        optimizer: TorchOptimizer,
-        scheduler_type: Optional[str],
-        epochs: int,
-        min_lr: float,
-        warmup_ratio: float = 0.1,
-    ) -> Optional[Any]:
-        """Construct learning rate scheduler strategy.
-
-        Parameters
-        ----------
-        optimizer : TorchOptimizer
-            Configured PyTorch optimizer instance.
-        scheduler_type : Optional[str]
-            Scheduler type: 'cosine', 'plateau', 'warmup_cosine', or None.
-        epochs : int
-            Total training epochs.
-        min_lr : float
-            Minimum learning rate floor.
-        warmup_ratio : float, default=0.1
-            Fraction of total epochs dedicated to linear warmup in 'warmup_cosine'.
-
-        Returns
-        -------
-        Optional[Any]
-            The configured scheduler instance or None.
-        """
-        if scheduler_type is None:
-            return None
-        elif scheduler_type == "cosine":
-            return CosineAnnealingLR(optimizer, T_max=epochs, eta_min=min_lr)
-        elif scheduler_type == "plateau":
-            return ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=10, min_lr=min_lr)
-        elif scheduler_type == "warmup_cosine":
-            warmup_epochs = max(1, int(epochs * warmup_ratio))
-            if warmup_epochs >= epochs:
-                warmup_epochs = max(1, epochs - 1)
-            cosine_epochs = max(1, epochs - warmup_epochs)
-
-            warmup_sched = LinearLR(optimizer, start_factor=0.1, total_iters=warmup_epochs)
-            cosine_sched = CosineAnnealingLR(optimizer, T_max=cosine_epochs, eta_min=min_lr)
-            return SequentialLR(optimizer, schedulers=[warmup_sched, cosine_sched], milestones=[warmup_epochs])
-        else:
-            raise ValueError(
-                f"Unsupported scheduler_type '{scheduler_type}'. Expected 'cosine', 'plateau', 'warmup_cosine', or None."
-            )
+    # Backward-compatibility convenience delegates forwarded to OptimizerFactory
+    @classmethod
+    def create_adamw(cls, *args: Any, **kwargs: Any) -> "OptimizerController":
+        """Convenience method delegating creation to OptimizerFactory.create_adamw."""
+        return OptimizerFactory.create_adamw(*args, **kwargs)
 
     @classmethod
-    def create_adamw(
-        cls,
-        model_parameters: Iterable[nn.Parameter],
-        lr: float = 1e-4,
-        weight_decay: float = 1e-4,
-        scheduler_type: Optional[str] = "cosine",
-        epochs: int = 100,
-        min_lr: float = 1e-6,
-        use_amp: bool = False,
-        kill_switch: Optional[KillSwitch] = None,
-        warmup_ratio: float = 0.1,
-    ) -> "OptimizerController":
-        """Factory constructor instantiating AdamW, scheduler strategy, and safety guards.
-
-        Parameters
-        ----------
-        model_parameters : Iterable[nn.Parameter]
-            Trainable parameters of the neural network module.
-        lr : float, default=1e-4
-            Initial learning rate.
-        weight_decay : float, default=1e-4
-            AdamW weight decay coefficient.
-        scheduler_type : Optional[str], default='cosine'
-            Type of scheduler: 'cosine', 'plateau', 'warmup_cosine', or None.
-        epochs : int, default=100
-            Total planned training epochs.
-        min_lr : float, default=1e-6
-            Minimum learning rate floor.
-        use_amp : bool, default=False
-            Whether to initialize automatic mixed precision GradScaler.
-        kill_switch : Optional[KillSwitch], default=None
-            Pluggable safety strategy (NaN divergence, early stopping).
-        warmup_ratio : float, default=0.1
-            Warmup epoch ratio for 'warmup_cosine'.
-
-        Returns
-        -------
-        OptimizerController
-            Configured optimizer controller instance.
-        """
-        params_list = list(model_parameters)
-        optimizer = AdamW(params_list, lr=lr, weight_decay=weight_decay)
-        scheduler = cls._build_scheduler(
-            optimizer=optimizer,
-            scheduler_type=scheduler_type,
-            epochs=epochs,
-            min_lr=min_lr,
-            warmup_ratio=warmup_ratio,
-        )
-        return cls(
-            optimizer=optimizer,
-            scheduler=scheduler,
-            kill_switch=kill_switch,
-            parameters=params_list,
-            use_amp=use_amp,
-        )
-
-    @classmethod
-    def create_lion(
-        cls,
-        model_parameters: Iterable[nn.Parameter],
-        lr: float = 1e-4,
-        weight_decay: float = 1e-4,
-        betas: Tuple[float, float] = (0.9, 0.99),
-        scheduler_type: Optional[str] = "cosine",
-        epochs: int = 100,
-        min_lr: float = 1e-6,
-        use_amp: bool = False,
-        kill_switch: Optional[KillSwitch] = None,
-        warmup_ratio: float = 0.1,
-    ) -> "OptimizerController":
-        """Factory constructor instantiating Lion, scheduler strategy, and safety guards.
-
-        Parameters
-        ----------
-        model_parameters : Iterable[nn.Parameter]
-            Trainable parameters of the neural network module.
-        lr : float, default=1e-4
-            Initial learning rate.
-        weight_decay : float, default=1e-4
-            Decoupled weight decay coefficient.
-        betas : Tuple[float, float], default=(0.9, 0.99)
-        scheduler_type : Optional[str], default='cosine'
-            Type of scheduler: 'cosine', 'plateau', 'warmup_cosine', or None.
-        epochs : int, default=100
-            Total planned training epochs.
-        min_lr : float, default=1e-6
-            Minimum learning rate floor.
-        use_amp : bool, default=False
-            Whether to initialize automatic mixed precision GradScaler.
-        kill_switch : Optional[KillSwitch], default=None
-            Pluggable safety strategy (NaN divergence, early stopping).
-        warmup_ratio : float, default=0.1
-            Warmup epoch ratio for 'warmup_cosine'.
-
-        Returns
-        -------
-        OptimizerController
-            Configured optimizer controller instance.
-        """
-        params_list = list(model_parameters)
-        optimizer = Lion(params_list, lr=lr, betas=betas, weight_decay=weight_decay)
-        scheduler = cls._build_scheduler(
-            optimizer=optimizer,
-            scheduler_type=scheduler_type,
-            epochs=epochs,
-            min_lr=min_lr,
-            warmup_ratio=warmup_ratio,
-        )
-        return cls(
-            optimizer=optimizer,
-            scheduler=scheduler,
-            kill_switch=kill_switch,
-            parameters=params_list,
-            use_amp=use_amp,
-        )
+    def create_lion(cls, *args: Any, **kwargs: Any) -> "OptimizerController":
+        """Convenience method delegating creation to OptimizerFactory.create_lion."""
+        return OptimizerFactory.create_lion(*args, **kwargs)
 
     def zero_grad(self) -> None:
         """Reset parameter gradients."""
@@ -625,6 +470,261 @@ class OptimizerController(Optimizer):
             for k, v in state.items():
                 if isinstance(v, torch.Tensor):
                     state[k] = v.to(device)
+
+
+class OptimizerFactory:
+    """Creational factory responsible for instantiating concrete PyTorch optimizers,
+    configuring learning rate schedule strategies, and assembling OptimizerController instances.
+
+    Preserves Bridge Pattern decoupling by ensuring that OptimizerController (Application Domain)
+    does not depend on concrete PyTorch optimizers (Solution Domain).
+    """
+
+    @staticmethod
+    def _build_scheduler(
+        optimizer: TorchOptimizer,
+        scheduler_type: Optional[str],
+        epochs: int,
+        min_lr: float,
+        warmup_ratio: float = 0.1,
+    ) -> Optional[Any]:
+        """Construct learning rate scheduler strategy.
+
+        Parameters
+        ----------
+        optimizer : TorchOptimizer
+            Configured PyTorch optimizer instance.
+        scheduler_type : Optional[str]
+            Scheduler type: 'cosine', 'plateau', 'warmup_cosine', or None.
+        epochs : int
+            Total training epochs.
+        min_lr : float
+            Minimum learning rate floor.
+        warmup_ratio : float, default=0.1
+            Fraction of total epochs dedicated to linear warmup in 'warmup_cosine'.
+
+        Returns
+        -------
+        Optional[Any]
+            The configured scheduler instance or None.
+        """
+        if scheduler_type is None:
+            return None
+        elif scheduler_type == "cosine":
+            return CosineAnnealingLR(optimizer, T_max=epochs, eta_min=min_lr)
+        elif scheduler_type == "plateau":
+            return ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=10, min_lr=min_lr)
+        elif scheduler_type == "warmup_cosine":
+            warmup_epochs = max(1, int(epochs * warmup_ratio))
+            if warmup_epochs >= epochs:
+                warmup_epochs = max(1, epochs - 1)
+            cosine_epochs = max(1, epochs - warmup_epochs)
+
+            warmup_sched = LinearLR(optimizer, start_factor=0.1, total_iters=warmup_epochs)
+            cosine_sched = CosineAnnealingLR(optimizer, T_max=cosine_epochs, eta_min=min_lr)
+            return SequentialLR(optimizer, schedulers=[warmup_sched, cosine_sched], milestones=[warmup_epochs])
+        else:
+            raise ValueError(
+                f"Unsupported scheduler_type '{scheduler_type}'. Expected 'cosine', 'plateau', 'warmup_cosine', or None."
+            )
+
+    @classmethod
+    def create_adamw(
+        cls,
+        model_parameters: Iterable[nn.Parameter],
+        lr: float = 1e-4,
+        weight_decay: float = 1e-4,
+        scheduler_type: Optional[str] = "cosine",
+        epochs: int = 100,
+        min_lr: float = 1e-6,
+        use_amp: bool = False,
+        kill_switch: Optional[KillSwitch] = None,
+        warmup_ratio: float = 0.1,
+    ) -> OptimizerController:
+        """Construct an OptimizerController managing an AdamW optimizer instance.
+
+        Parameters
+        ----------
+        model_parameters : Iterable[nn.Parameter]
+            Trainable parameters of the neural network module.
+        lr : float, default=1e-4
+            Initial learning rate.
+        weight_decay : float, default=1e-4
+            AdamW weight decay coefficient.
+        scheduler_type : Optional[str], default='cosine'
+            Type of scheduler: 'cosine', 'plateau', 'warmup_cosine', or None.
+        epochs : int, default=100
+            Total planned training epochs.
+        min_lr : float, default=1e-6
+            Minimum learning rate floor.
+        use_amp : bool, default=False
+            Whether to initialize automatic mixed precision GradScaler.
+        kill_switch : Optional[KillSwitch], default=None
+            Pluggable safety strategy (NaN divergence, early stopping).
+        warmup_ratio : float, default=0.1
+            Warmup epoch ratio for 'warmup_cosine'.
+
+        Returns
+        -------
+        OptimizerController
+            Configured optimizer controller instance.
+        """
+        params_list = list(model_parameters)
+        optimizer = AdamW(params_list, lr=lr, weight_decay=weight_decay)
+        scheduler = cls._build_scheduler(
+            optimizer=optimizer,
+            scheduler_type=scheduler_type,
+            epochs=epochs,
+            min_lr=min_lr,
+            warmup_ratio=warmup_ratio,
+        )
+        return OptimizerController(
+            optimizer=optimizer,
+            scheduler=scheduler,
+            kill_switch=kill_switch,
+            parameters=params_list,
+            use_amp=use_amp,
+        )
+
+    @classmethod
+    def create_lion(
+        cls,
+        model_parameters: Iterable[nn.Parameter],
+        lr: float = 1e-4,
+        weight_decay: float = 1e-4,
+        betas: Tuple[float, float] = (0.9, 0.99),
+        scheduler_type: Optional[str] = "cosine",
+        epochs: int = 100,
+        min_lr: float = 1e-6,
+        use_amp: bool = False,
+        kill_switch: Optional[KillSwitch] = None,
+        warmup_ratio: float = 0.1,
+    ) -> OptimizerController:
+        """Construct an OptimizerController managing a Lion optimizer instance.
+
+        Parameters
+        ----------
+        model_parameters : Iterable[nn.Parameter]
+            Trainable parameters of the neural network module.
+        lr : float, default=1e-4
+            Initial learning rate.
+        weight_decay : float, default=1e-4
+            Decoupled weight decay coefficient.
+        betas : Tuple[float, float], default=(0.9, 0.99)
+            Lion beta parameters.
+        scheduler_type : Optional[str], default='cosine'
+            Type of scheduler: 'cosine', 'plateau', 'warmup_cosine', or None.
+        epochs : int, default=100
+            Total planned training epochs.
+        min_lr : float, default=1e-6
+            Minimum learning rate floor.
+        use_amp : bool, default=False
+            Whether to initialize automatic mixed precision GradScaler.
+        kill_switch : Optional[KillSwitch], default=None
+            Pluggable safety strategy (NaN divergence, early stopping).
+        warmup_ratio : float, default=0.1
+            Warmup epoch ratio for 'warmup_cosine'.
+
+        Returns
+        -------
+        OptimizerController
+            Configured optimizer controller instance.
+        """
+        params_list = list(model_parameters)
+        optimizer = Lion(params_list, lr=lr, betas=betas, weight_decay=weight_decay)
+        scheduler = cls._build_scheduler(
+            optimizer=optimizer,
+            scheduler_type=scheduler_type,
+            epochs=epochs,
+            min_lr=min_lr,
+            warmup_ratio=warmup_ratio,
+        )
+        return OptimizerController(
+            optimizer=optimizer,
+            scheduler=scheduler,
+            kill_switch=kill_switch,
+            parameters=params_list,
+            use_amp=use_amp,
+        )
+
+    @classmethod
+    def create(
+        cls,
+        optimizer_type: str,
+        model_parameters: Iterable[nn.Parameter],
+        lr: float = 1e-4,
+        weight_decay: float = 1e-4,
+        scheduler_type: Optional[str] = "cosine",
+        epochs: int = 100,
+        min_lr: float = 1e-6,
+        use_amp: bool = False,
+        kill_switch: Optional[KillSwitch] = None,
+        warmup_ratio: float = 0.1,
+        **kwargs: Any,
+    ) -> OptimizerController:
+        """Construct an OptimizerController dynamically based on an optimizer type identifier.
+
+        Parameters
+        ----------
+        optimizer_type : str
+            Name of optimizer algorithm: 'adamw' or 'lion' (case-insensitive).
+        model_parameters : Iterable[nn.Parameter]
+            Trainable parameters of the neural network module.
+        lr : float, default=1e-4
+            Initial learning rate.
+        weight_decay : float, default=1e-4
+            Weight decay coefficient.
+        scheduler_type : Optional[str], default='cosine'
+            Type of scheduler: 'cosine', 'plateau', 'warmup_cosine', or None.
+        epochs : int, default=100
+            Total planned training epochs.
+        min_lr : float, default=1e-6
+            Minimum learning rate floor.
+        use_amp : bool, default=False
+            Whether to initialize automatic mixed precision GradScaler.
+        kill_switch : Optional[KillSwitch], default=None
+            Pluggable safety strategy.
+        warmup_ratio : float, default=0.1
+            Warmup epoch ratio for 'warmup_cosine'.
+        **kwargs : Any
+            Additional algorithm-specific parameters (e.g. betas for Lion).
+
+        Returns
+        -------
+        OptimizerController
+            Configured optimizer controller instance.
+        """
+        opt_type = optimizer_type.lower().strip()
+        if opt_type == "adamw":
+            return cls.create_adamw(
+                model_parameters=model_parameters,
+                lr=lr,
+                weight_decay=weight_decay,
+                scheduler_type=scheduler_type,
+                epochs=epochs,
+                min_lr=min_lr,
+                use_amp=use_amp,
+                kill_switch=kill_switch,
+                warmup_ratio=warmup_ratio,
+            )
+        elif opt_type == "lion":
+            betas = kwargs.get("betas", (0.9, 0.99))
+            return cls.create_lion(
+                model_parameters=model_parameters,
+                lr=lr,
+                weight_decay=weight_decay,
+                betas=betas,
+                scheduler_type=scheduler_type,
+                epochs=epochs,
+                min_lr=min_lr,
+                use_amp=use_amp,
+                kill_switch=kill_switch,
+                warmup_ratio=warmup_ratio,
+            )
+        else:
+            raise ValueError(
+                f"Unsupported optimizer_type '{optimizer_type}'. Supported algorithms: 'adamw', 'lion'."
+            )
 
 
 # Drop-in backward compatibility alias
