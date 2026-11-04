@@ -258,10 +258,10 @@ def get_torch_module(self) -> nn.Module:
 ```
 * **Purpose:** Exposes the encapsulated `SMART` `torch.nn.Module` instance.
 * **Return Value:** `self.model` (`nn.Module`).
-* **Usage:** Used by [`StandardOptimizer`](file:///home/arturobaltanas/University/GuidedResearch/src/training/optimizers.py#L16) to register trainable parameters:
+* **Usage:** Used by [`OptimizerController`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/src/training/optimizers.py) to register trainable parameters:
   ```python
   torch_module = model_wrapper.get_torch_module()
-  optimizer = StandardOptimizer.create_adamw(torch_module.parameters(), lr=1e-3)
+  optimizer = OptimizerController.create_adamw(torch_module.parameters(), lr=1e-3)
   ```
   Also used for device placement (`torch_module.to(device)`) and state dictionary serialization in [`TorchCheckpointHandler`](file:///home/arturobaltanas/University/GuidedResearch/src/training/checkpoints.py#L12).
 

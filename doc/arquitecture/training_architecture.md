@@ -12,7 +12,7 @@ To maintain modularity and scientific rigor across all milestones (SMART, uPDEt,
 2. **`BatchLoader`:** Reads simulation samples from disk partitions and prepares them into model-specific PyTorch tensor batches (`loadDataset`).
 3. **`ModelWrapper`:** Houses and instantiates the deep learning model (e.g., SMART, uPDEt), executes the forward pass, and standardizes input/output tensor shapes.
 4. **`LossEngine`:** Measures surrogate prediction errors against ground-truth simulation physics (e.g., Relative $L_2$, Mean Squared Error, boundary penalties).
-5. **`Optimizer`:** Computes parameter gradients, applies gradient clipping, updates neural network weights, and steps the learning rate schedule.
+5. **`OptimizerController`:** Bridges the high-level optimization lifecycle abstraction to concrete PyTorch optimizers (`AdamW`, `Lion`), orchestrating learning rate schedules (e.g. 10% warmup + 90% cosine decay via `SequentialLR`) and pluggable health & safety strategies (`KillSwitch`).
 6. **`CheckpointHandler`:** Persists model weights, optimizer states, and epoch metadata to disk whenever validation metrics achieve a new best.
 7. **`TelemetryLogger` (`CliProgressMonitor`):** Renders real-time terminal progress bars, percentage completion, hardware utilization, and estimated time of arrival (ETA).
 8. **`TrainingEngine`:** The central orchestrator that coordinates the outer epoch loop and inner batch loops, connecting all training components seamlessly.
@@ -67,6 +67,26 @@ classDiagram
     TrainingEngine *-- CheckpointHandler
     TrainingEngine *-- TelemetryLogger
 
+    %% ==========================================
+    %% PATRÓN BRIDGE: Abstracción <--> Implementor
+    %% ==========================================
+    Optimizer <|-- OptimizerController : Refined Abstraction
+    Optimizer o-- TorchOptimizer : "Bridge (_optimizer)"
+    TorchOptimizer <|-- AdamW
+    TorchOptimizer <|-- Lion
+
+    %% ==========================================
+    %% PATRÓN STRATEGY: En el Dominio de Aplicación
+    %% ==========================================
+    OptimizerController o-- LRScheduler : "Strategy (LR Schedule)"
+    OptimizerController o-- KillSwitch : "Strategy (Health & Safety)"
+
+    LRScheduler <|-- SequentialLR
+    SequentialLR o-- "1..*" LRScheduler : "10% Warmup + 90% Cosine"
+    KillSwitch <|-- NaNOrDivergenceKillSwitch
+    KillSwitch <|-- EarlyStoppingKillSwitch
+    KillSwitch <|-- CompositeKillSwitch
+
     %% ModelWrapper Implementations
     ModelWrapper <|-- SMARTModelWrapper
     ModelWrapper <|-- UPDEtModelWrapper
@@ -99,6 +119,65 @@ classDiagram
         -_validate_epoch(val_loader: DataLoader, device: torch.device) Dict~str, float~
     }
 
+    class Optimizer {
+        <<Abstraction>>
+        #TorchOptimizer _optimizer
+        +zero_grad() void
+        +get_learning_rate() float
+        +step(loss: Tensor, max_grad_norm: Optional~float~)* float
+        +epoch_step(metric: Optional~float~)* float
+    }
+
+    class OptimizerController {
+        <<Refined Abstraction>>
+        -Optional~LRScheduler~ scheduler
+        -Optional~KillSwitch~ kill_switch
+        -Optional~GradScaler~ scaler
+        +step(loss: Tensor, max_grad_norm: Optional~float~) float
+        +epoch_step(metric: Optional~float~) float
+        +get_state_dict() Dict~str, Any~
+        +load_state(checkpoint: Dict~str, Any~) void
+        +create_adamw(...) OptimizerController$
+        +create_lion(...) OptimizerController$
+    }
+
+    class TorchOptimizer {
+        <<Implementor (PyTorch)>>
+        +step() void
+        +zero_grad() void
+    }
+
+    class Lion {
+        +step() void
+    }
+
+    class KillSwitch {
+        <<Strategy Interface>>
+        +check_step(loss_val: float, grad_norm: float) bool
+        +check_epoch(metric_val: Optional~float~) bool
+    }
+
+    class NaNOrDivergenceKillSwitch {
+        -float max_loss
+        -Optional~float~ max_grad_norm
+        +check_step(loss_val: float, grad_norm: float) bool
+        +check_epoch(metric_val: Optional~float~) bool
+    }
+
+    class EarlyStoppingKillSwitch {
+        -int patience
+        -float min_delta
+        -str mode
+        +check_step(loss_val: float, grad_norm: float) bool
+        +check_epoch(metric_val: Optional~float~) bool
+    }
+
+    class CompositeKillSwitch {
+        -List~KillSwitch~ kill_switches
+        +check_step(loss_val: float, grad_norm: float) bool
+        +check_epoch(metric_val: Optional~float~) bool
+    }
+
     class ModelWrapper {
         <<Interface>>
         +Module model
@@ -129,13 +208,6 @@ classDiagram
 
     class RelativeL2LossEngine {
         +compute(predictions: Dict~str, Tensor~, targets: Dict~str, Tensor~, batch: Dict~str, Tensor~) Tuple~Tensor, Dict~str, float~~
-    }
-
-    class Optimizer {
-        +zero_grad() void
-        +step(loss: Tensor, max_grad_norm: Optional~float~) float
-        +epoch_step(metric: Optional~float~) float
-        +get_learning_rate() float
     }
 
     class CheckpointHandler {
@@ -202,13 +274,144 @@ classDiagram
   - **`CompositePhysicsLossEngine`:** Adds soft mechanics constraints (e.g., penalizing workpiece penetration through the die contour):
     $$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{RelL2}} + \lambda_{\text{contact}} \mathcal{L}_{\text{penetration}}$$
 
-### 4.4 `Optimizer` (Optimization & Learning Rate Schedule)
+### 4.4 `OptimizerController` (Bridge & Strategy Pattern Subsystem)
 * **Contract:**
   - `zero_grad() -> None`
   - `step(loss: torch.Tensor, max_grad_norm: Optional[float] = None) -> float`
   - `epoch_step(metric: Optional[float] = None) -> float`
   - `get_learning_rate() -> float`
-* **Purpose:** Manages `optimizer.zero_grad()`, backpropagation (`loss.backward()`), gradient clipping norm computation (`torch.nn.utils.clip_grad_norm_`), optimizer steps (AdamW), and learning rate scheduler updates (CosineAnnealingLR or ReduceLROnPlateau).
+  - `get_state_dict() -> Dict[str, Any]`
+  - `load_state(checkpoint: Dict[str, Any], device: Optional[torch.device] = None, step_scheduler_to_epoch: Optional[int] = None) -> None`
+
+#### Subsystem Architecture: Decoupling via Bridge & Strategy
+The optimization subsystem separates the high-level parameter update lifecycle from specific tensor update algorithms (**Bridge Pattern**), while delegating learning rate adjustments and convergence safeguards to pluggable policies (**Strategy Pattern**).
+
+```mermaid
+classDiagram
+direction TB
+%% ==========================================
+%% PATRÓN BRIDGE: Abstracción <--> Implementor
+%% ==========================================
+Optimizer <|-- OptimizerController : Refined Abstraction
+Optimizer o-- TorchOptimizer : "Bridge (_optimizer)"
+TorchOptimizer <|-- AdamW
+TorchOptimizer <|-- Lion
+
+%% ==========================================
+%% PATRÓN STRATEGY: En el Dominio de Aplicación
+%% ==========================================
+OptimizerController o-- LRScheduler : "Strategy (LR Schedule)"
+OptimizerController o-- KillSwitch : "Strategy (Health & Safety)"
+
+LRScheduler <|-- SequentialLR
+SequentialLR o-- "1..*" LRScheduler : "10% Warmup + 90% Cosine"
+KillSwitch <|-- NaNOrDivergenceKillSwitch
+KillSwitch <|-- EarlyStoppingKillSwitch
+KillSwitch <|-- CompositeKillSwitch
+
+class Optimizer {
+    <<Abstraction>>
+    #TorchOptimizer _optimizer
+    +zero_grad() void
+    +get_learning_rate() float
+    +step(loss: Tensor, max_grad_norm: Optional~float~)* float
+    +epoch_step(metric: Optional~float~)* float
+}
+
+class OptimizerController {
+    <<Refined Abstraction>>
+    -Optional~LRScheduler~ scheduler
+    -Optional~KillSwitch~ kill_switch
+    -Optional~GradScaler~ scaler
+    +step(loss: Tensor, max_grad_norm: Optional~float~) float
+    +epoch_step(metric: Optional~float~) float
+    +create_adamw(...) OptimizerController$
+    +create_lion(...) OptimizerController$
+}
+
+class TorchOptimizer {
+    <<Implementor (PyTorch)>>
+    +step() void
+    +zero_grad() void
+}
+
+class KillSwitch {
+    <<Strategy Interface>>
+    +check_step(loss_val: float, grad_norm: float) bool
+    +check_epoch(metric_val: Optional~float~) bool
+}
+```
+
+#### Core Components & Pattern Responsibilities:
+1. **Bridge Pattern (`Optimizer` Abstraction $\leftrightarrow$ `TorchOptimizer` Implementor):**
+   - **Abstraction (`Optimizer`):** Maintains the high-level contract used by `TrainingEngine` (`step()`, `epoch_step()`, `zero_grad()`, `get_learning_rate()`). Base implementations delegate directly to `self._optimizer`.
+   - **Implementor (`TorchOptimizer`):** Any PyTorch-compliant optimizer (`AdamW` or native dependency-free `Lion`). The user or script can switch between optimization algorithms without modifying `TrainingEngine` or loop logic.
+   - **`Lion` (EvoLved Sign Momentum):** Discovered by Google Brain (Chen et al., 2023). Employs signed momentum vectors ($\text{sign}(\beta_1 m + (1-\beta_1) g)$) and decoupled weight decay, achieving reduced memory footprint (tracking only first-order momentum) and faster convergence across transformers.
+
+2. **Strategy Pattern for Learning Rate Scheduling (`LRScheduler`):**
+   - Configurable strategies: `"cosine"` (`CosineAnnealingLR`), `"plateau"` (`ReduceLROnPlateau`), `"warmup_cosine"` (`SequentialLR` chaining `LinearLR` for 10% warmup and `CosineAnnealingLR` for 90% decay), or `None`.
+   - **Optionality Guarantee:** If `scheduler=None`, learning rate remains strictly constant across all epochs.
+
+3. **Strategy Pattern for Health & Safety (`KillSwitch`):**
+   - **`NaNOrDivergenceKillSwitch`:** Step guard inspecting batch loss and gradient norms. Detects `NaN`, `Inf`, or numerical explosion exceeding `max_loss` (default $10^6$) and raises `RuntimeError` to abort training immediately before model weights corrupt.
+   - **`EarlyStoppingKillSwitch`:** Epoch guard monitoring validation metric improvements across a `patience` window (default 10 epochs with `min_delta=1e-4`). When validation plateaus, it raises `StopIteration`, allowing `TrainingEngine` to cleanly terminate the epoch loop, save the final state, and export summary telemetry.
+   - **`CompositeKillSwitch`:** Aggregates multiple guards (e.g. divergence check + early stopping) executed sequentially.
+   - **Optionality Guarantee:** If `kill_switch=None`, health checks are skipped and multi-epoch execution proceeds uninhibited.
+
+#### Component Optionality Matrix
+
+| Feature | Argument Value | Strategy Class Activated | Behavior & Effect |
+| :--- | :--- | :--- | :--- |
+| **Scheduler** | `None` / `"none"` | `None` | Constant learning rate; scheduler step is a no-op. |
+| | `"cosine"` | `CosineAnnealingLR` | Smooth cosine decay towards `min_lr` across total epochs. |
+| | `"plateau"` | `ReduceLROnPlateau` | Multiplies LR by 0.5 when validation error plateaus for 10 epochs. |
+| | `"warmup_cosine"` | `SequentialLR` | 10% linear warmup from $0.1 \times \text{lr}$ to $\text{lr}$, followed by 90% cosine annealing. |
+| **KillSwitch** | `None` | `None` | Uninhibited training; no health checks performed. |
+| | `NaNOrDivergenceKillSwitch` | `NaNOrDivergenceKillSwitch` | Raises `RuntimeError` immediately if loss is NaN/Inf or $> 10^6$. |
+| | `EarlyStoppingKillSwitch` | `EarlyStoppingKillSwitch` | Raises `StopIteration` after patience exhausted; triggers clean shutdown. |
+| | `CompositeKillSwitch` | `CompositeKillSwitch` | Combines NaN/divergence protection with early stopping. |
+
+#### Usage Examples
+
+**1. Bare Minimum (Constant LR, Uninhibited Training):**
+```python
+optimizer = OptimizerController.create_adamw(
+    model_parameters=model.parameters(),
+    lr=1e-4,
+    scheduler_type=None,
+    kill_switch=None,
+)
+```
+
+**2. Production Setup (Warmup + Cosine Annealing with Mixed Precision):**
+```python
+optimizer = OptimizerController.create_adamw(
+    model_parameters=model.parameters(),
+    lr=1e-4,
+    scheduler_type="warmup_cosine",
+    epochs=100,
+    min_lr=1e-6,
+    use_amp=True,
+)
+```
+
+**3. Full Safety & Lion Optimization:**
+```python
+kill_switch = CompositeKillSwitch([
+    NaNOrDivergenceKillSwitch(max_loss=1e4, max_grad_norm=5.0),
+    EarlyStoppingKillSwitch(patience=15, min_delta=1e-4, mode="min"),
+])
+
+optimizer = OptimizerController.create_lion(
+    model_parameters=model.parameters(),
+    lr=1e-4,
+    betas=(0.9, 0.99),
+    weight_decay=1e-4,
+    scheduler_type="warmup_cosine",
+    epochs=100,
+    kill_switch=kill_switch,
+)
+```
 
 ### 4.5 `CheckpointHandler` (Atomic Persistence)
 * **Contract:**
@@ -320,7 +523,7 @@ sequenceDiagram
     participant BatchLoader as BatchLoader
     participant ModelWrapper as ModelWrapper
     participant LossEngine as LossEngine
-    participant Optimizer as Optimizer
+    participant Optimizer as OptimizerController (Bridge)
     participant Checkpointer as CheckpointHandler
     participant Logger as TelemetryLogger
 
@@ -351,7 +554,7 @@ sequenceDiagram
             LossEngine-->>Engine: (scalar_loss, loss_components)
 
             Engine->>Optimizer: step(scalar_loss, max_grad_norm)
-            Note over Optimizer: loss.backward(), clip_grad_norm_, AdamW.step()
+            Note over Optimizer: loss.backward(), clip_grad_norm_, TorchOptimizer.step(), KillSwitch.check_step()
             Optimizer-->>Engine: gradient_norm
 
             Engine->>Optimizer: get_learning_rate()
@@ -376,19 +579,23 @@ sequenceDiagram
         end
 
         Engine->>Optimizer: epoch_step(val_loss_total)
-        Note over Optimizer: Update scheduler (e.g., CosineAnnealing / ReduceLROnPlateau)
+        Note over Optimizer: Update scheduler (e.g. Warmup+Cosine) & KillSwitch.check_epoch()
         Optimizer-->>Engine: updated_lr
 
-        Engine->>Logger: end_epoch(epoch, total_epochs, train_metrics, val_metrics, updated_lr)
-        Note over Logger: Print formatted summary banner, sync remote dashboards (WandB)
+        alt Early Stopping Triggered (StopIteration raised by KillSwitch)
+            Note over Engine: Catch StopIteration, log early stop notice, save latest.pt and break loop
+        else Normal Epoch Continuation
+            Engine->>Logger: end_epoch(epoch, total_epochs, train_metrics, val_metrics, updated_lr)
+            Note over Logger: Print formatted summary banner, sync remote dashboards (WandB)
 
-        alt val_loss < best_val_loss (Record Validation Metric)
-            Engine->>Checkpointer: save(epoch, model, val_metrics, is_best=True)
-            Note over Checkpointer: Atomic write (.pt.tmp -> best_model.pt)
-            Checkpointer-->>Engine: best_model.pt path
-        else Regular Epoch (val_loss >= best_val_loss)
-            Engine->>Checkpointer: save(epoch, model, val_metrics, is_best=False)
-            Checkpointer-->>Engine: checkpoint_epoch_N.pt path
+            alt val_loss < best_val_loss (Record Validation Metric)
+                Engine->>Checkpointer: save(epoch, model, val_metrics, is_best=True)
+                Note over Checkpointer: Atomic write (.pt.tmp -> best_model.pt)
+                Checkpointer-->>Engine: best_model.pt path
+            else Regular Epoch (val_loss >= best_val_loss)
+                Engine->>Checkpointer: save(epoch, model, val_metrics, is_best=False)
+                Checkpointer-->>Engine: checkpoint_epoch_N.pt path
+            end
         end
     end
 
@@ -441,12 +648,12 @@ For every mini-batch inside the training dataset, the system cycles through five
    - *Information Flow:* Compares predicted displacement fields against ground-truth ABAQUS targets. Calculates the relative Frobenius norm along with optional physical penalties (e.g. punch penetration). Outputs a differentiable scalar `loss` for backpropagation and a dictionary of human-readable metric floats.
 
 4. **Backward Propagation, Gradient Clipping & Optimization:**
-   - *Participating Classes:* [`Optimizer`](file:///home/arturobaltanas/University/Guided%20Research/src/training/optimizers.py) (`StandardOptimizer`), PyTorch Autograd.
+   - *Participating Classes:* [`OptimizerController`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/src/training/optimizers.py) (`Optimizer` Bridge), PyTorch Autograd, [`KillSwitch`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/src/training/interfaces.py).
    - *Activated Function:* `optimizer.step(loss, max_grad_norm)`.
-   - *Information Flow:* Triggers `loss.backward()` to populate parameter gradients, applies `torch.nn.utils.clip_grad_norm_` to safeguard against exploding gradients in transformer attention layers, and calls `AdamW.step()` to update model weights.
+   - *Information Flow:* Triggers `loss.backward()` to populate parameter gradients, applies `torch.nn.utils.clip_grad_norm_` to safeguard against exploding gradients in transformer attention layers, executes step health check via `kill_switch.check_step()`, and calls the underlying `TorchOptimizer.step()` (`AdamW` or `Lion`) to update model weights.
 
 5. **Intra-Batch Telemetry & Live Feedback:**
-   - *Participating Classes:* [`Optimizer`](file:///home/arturobaltanas/University/Guided%20Research/src/training/optimizers.py), [`TelemetryLogger`](file:///home/arturobaltanas/University/Guided%20Research/src/training/loggers.py) (`CliProgressMonitor`).
+   - *Participating Classes:* [`OptimizerController`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/src/training/optimizers.py), [`TelemetryLogger`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/src/training/loggers.py) (`CliProgressMonitor`).
    - *Activated Functions:*
      - `optimizer.get_learning_rate()`: Queries current optimizer learning rate.
      - `logger.update_batch(batch_idx, loss.item(), lr)`: Gathers current batch loss, queries CUDA VRAM via `torch.cuda.max_memory_allocated()`, computes dynamic sample throughput (`samples/s`), and renders the live interactive terminal progress line.
@@ -461,11 +668,11 @@ For every mini-batch inside the training dataset, the system cycles through five
   4. `batch_loader.loadDataset()` & `model_wrapper.forward(batch)`: Runs deterministic forward inference on validation samples.
   5. `loss_engine.compute(predictions, targets, batch)`: Evaluates error on unobserved samples and accumulates validation metrics.
 
-#### State 5: Adaptive Learning Rate Scheduling
-* **Context & Role:** Adjusts the optimizer step size based on validation performance to ensure smooth convergence towards the global minimum.
-* **Participating Classes:** [`Optimizer`](file:///home/arturobaltanas/University/Guided%20Research/src/training/optimizers.py).
+#### State 5: Adaptive Learning Rate Scheduling & Safety Evaluation
+* **Context & Role:** Adjusts the optimizer step size based on validation performance to ensure smooth convergence, while validating epoch-level health and early stopping criteria.
+* **Participating Classes:** [`OptimizerController`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/src/training/optimizers.py), [`KillSwitch`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/src/training/interfaces.py).
 * **Activated Function:** `optimizer.epoch_step(val_metrics["loss_total"])`.
-* **Information Flow:** Hands the validation metric to learning rate schedulers (e.g. `ReduceLROnPlateau` or `CosineAnnealingLR`), updating internal scheduler state and returning the active learning rate for the next epoch.
+* **Information Flow:** Hands the validation metric to learning rate schedulers (e.g. `SequentialLR` warmup+cosine, `ReduceLROnPlateau`, or `CosineAnnealingLR`) and triggers `kill_switch.check_epoch()`. If patience is exceeded, raises `StopIteration` for graceful termination.
 
 #### State 6: Epoch Telemetry & Benchmark Logging
 * **Context & Role:** Aggregates epoch-wide metrics, provides immediate feedback in the console, and syncs data to experiment dashboards.
@@ -496,13 +703,13 @@ The classes and strategies specified in this architecture are organized in the c
 
 | Component Role | Class / Interface | Target File Location |
 | :--- | :--- | :--- |
-| **Interfaces** | `BatchLoader`, `ModelWrapper`, `LossEngine`, `Optimizer`, `CheckpointHandler`, `TelemetryLogger` | [`src/training/interfaces.py`](file:///home/arturobaltanas/University/Guided%20Research/src/training/interfaces.py) |
-| **Batch Preparation** | `SMARTBatchLoader`, `StandardBatchLoader` | [`src/training/batch_loaders.py`](file:///home/arturobaltanas/University/Guided%20Research/src/training/batch_loaders.py) |
-| **Model Wrappers** | [`SMARTModelWrapper`](file:///home/arturobaltanas/University/GuidedResearch/doc/arquitecture/model_wrappers/smart_model_wrapper.md), `UPDEtModelWrapper`, `BaselineFNOWrapper` | [`src/training/wrappers/smart_wrapper.py`](file:///home/arturobaltanas/University/GuidedResearch/src/training/wrappers/smart_wrapper.py) |
-| **Loss Formulations** | `RelativeL2LossEngine`, `MSELossEngine`, `CompositePhysicsLossEngine` | [`src/training/losses.py`](file:///home/arturobaltanas/University/Guided%20Research/src/training/losses.py) |
-| **Optimization** | `StandardOptimizer` | [`src/training/optimizers.py`](file:///home/arturobaltanas/University/Guided%20Research/src/training/optimizers.py) |
-| **Persistence** | `TorchCheckpointHandler` | [`src/training/checkpoints.py`](file:///home/arturobaltanas/University/Guided%20Research/src/training/checkpoints.py) |
-| **Telemetry & CLI** | `CliProgressMonitor`, `CompositeTelemetryLogger`, `WandbLogger` | [`src/training/loggers.py`](file:///home/arturobaltanas/University/Guided%20Research/src/training/loggers.py) |
-| **Orchestration** | `TrainingEngine` | [`src/training/engine.py`](file:///home/arturobaltanas/University/Guided%20Research/src/training/engine.py) |
-| **CLI Runner** | End-to-end training entry point | [`scripts/train_model.py`](file:///home/arturobaltanas/University/Guided%20Research/scripts/train_model.py) |
-| **Test Suite** | Unit tests for training pipeline and strategies | [`tests/test_training_engine.py`](file:///home/arturobaltanas/University/Guided%20Research/tests/test_training_engine.py) |
+| **Interfaces** | `BatchLoader`, `ModelWrapper`, `LossEngine`, `Optimizer`, `KillSwitch`, `CheckpointHandler`, `TelemetryLogger` | [`src/training/interfaces.py`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/src/training/interfaces.py) |
+| **Batch Preparation** | `SMARTBatchLoader`, `StandardBatchLoader` | [`src/training/batch_loaders.py`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/src/training/batch_loaders.py) |
+| **Model Wrappers** | [`SMARTModelWrapper`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/doc/arquitecture/model_wrappers/smart_model_wrapper.md), `UPDEtModelWrapper`, `BaselineFNOWrapper` | [`src/training/wrappers/smart_wrapper.py`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/src/training/wrappers/smart_wrapper.py) |
+| **Loss Formulations** | `RelativeL2LossEngine`, `MSELossEngine`, `CompositePhysicsLossEngine` | [`src/training/losses.py`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/src/training/losses.py) |
+| **Optimization & Safety** | `OptimizerController`, `StandardOptimizer`, `Lion`, `NaNOrDivergenceKillSwitch`, `EarlyStoppingKillSwitch`, `CompositeKillSwitch` | [`src/training/optimizers.py`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/src/training/optimizers.py) |
+| **Persistence** | `TorchCheckpointHandler` | [`src/training/checkpoints.py`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/src/training/checkpoints.py) |
+| **Telemetry & CLI** | `CliProgressMonitor`, `CompositeTelemetryLogger`, `WandbLogger` | [`src/training/loggers.py`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/src/training/loggers.py) |
+| **Orchestration** | `TrainingEngine` | [`src/training/engine.py`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/src/training/engine.py) |
+| **CLI Runner** | End-to-end training entry points | [`scripts/train_smart_final_step.py`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/scripts/train_smart_final_step.py) |
+| **Test Suite** | Unit tests for training pipeline and strategies | [`tests/test_training_engine.py`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/tests/test_training_engine.py) |
