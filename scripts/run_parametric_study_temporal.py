@@ -382,17 +382,8 @@ def execute_single_training_run(
     results_dir = Path(run_config["results_dir"])
     models_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Write initial parametros.txt before training starts
+    # 1. Audit trail (parametros.txt) is generated automatically by scripts/train_smart_temporal.py
     param_txt_path = models_dir / "parametros.txt"
-    write_parametros_txt(
-        file_path=param_txt_path,
-        run_config=run_config,
-        swept_keys=swept_keys,
-        experiment_name=experiment_name,
-        run_slug=run_slug,
-        run_index=run_index,
-        total_runs=total_runs,
-    )
 
     # 2. Check if run has already completed in a prior execution
     metrics_file = models_dir / "training_metrics.jsonl"
@@ -517,18 +508,6 @@ def execute_single_training_run(
                     run_summary["final_val_loss"] = last_rec.get("val_loss")
         except Exception as ex:
             print(f"[WARNING] Failed to parse metrics file {metrics_file}: {ex}")
-
-    # 4. Update parametros.txt with final telemetry
-    write_parametros_txt(
-        file_path=param_txt_path,
-        run_config=run_config,
-        swept_keys=swept_keys,
-        experiment_name=experiment_name,
-        run_slug=run_slug,
-        run_index=run_index,
-        total_runs=total_runs,
-        results_summary=run_summary,
-    )
 
     return run_summary
 

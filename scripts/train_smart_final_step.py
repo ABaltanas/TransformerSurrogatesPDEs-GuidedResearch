@@ -10,9 +10,12 @@ Utilizes the modular TrainingEngine architecture and component strategies from s
 """
 
 import argparse
+from datetime import datetime, timezone
+import json
 from pathlib import Path
 import sys
-from typing import Any, Dict, List
+import time
+from typing import Any, Dict, List, Optional
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
@@ -22,13 +25,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import json
 from src.training import (
     CliProgressMonitor,
     CompositeTelemetryLogger,
     EarlyStoppingKillSwitch,
     JsonMetricsLogger,
     OptimizerController,
+    OptimizerFactory,
     RelativeL2LossEngine,
     SMARTBatchLoader,
     SMARTModelWrapper,
@@ -128,6 +131,92 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def write_parametros_txt(
+    file_path: Path,
+    args: argparse.Namespace,
+    summary: Optional[Dict[str, Any]] = None,
+    kpis: Optional[Dict[str, Any]] = None,
+    duration_s: Optional[float] = None,
+) -> None:
+    """Create or update a detailed parametros.txt audit file for a single training run.
+
+    Parameters
+    ----------
+    file_path : Path
+        Destination path for the parametros.txt file.
+    args : argparse.Namespace
+        Active CLI arguments configured for this training execution.
+    summary : Optional[Dict[str, Any]], default=None
+        Execution summary dictionary returned by TrainingEngine.
+    kpis : Optional[Dict[str, Any]], default=None
+        KPI metrics computed by TrainingTelemetryAnalyzer.
+    duration_s : Optional[float], default=None
+        Elapsed wall-clock training duration in seconds.
+    """
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+    lines = [
+        "=" * 80,
+        "SMART SURROGATE MODEL - TRAINING CONFIGURATION AUDIT",
+        "=" * 80,
+        f"Timestamp:             {now_str}",
+        f"Execution Script:      scripts/train_smart_final_step.py",
+        f"Data Directory:        {args.data_dir}",
+        f"Models Directory:      {args.models_dir}",
+        f"Results Directory:     {args.results_dir}",
+    ]
+
+    # Training and Optimization configuration
+    lines.append("-" * 80)
+    lines.append("TRAINING & OPTIMIZATION CONFIGURATION:")
+    lines.append(f"  epochs:                       {args.epochs}")
+    lines.append(f"  batch_size:                   {args.batch_size}")
+    lines.append(f"  optimizer:                    {args.optimizer}")
+    lines.append(f"  lr:                           {args.lr}")
+    lines.append(f"  weight_decay:                 {args.weight_decay}")
+    lines.append(f"  scheduler:                    {args.scheduler}")
+    lines.append(f"  early_stopping_patience:      {args.early_stopping_patience}")
+    lines.append(f"  max_grad_norm:                {args.max_grad_norm}")
+    lines.append(f"  device:                       {args.device}")
+    lines.append(f"  seed:                         {args.seed}")
+
+    # SMART Architecture configuration
+    lines.append("-" * 80)
+    lines.append("SMART ARCHITECTURE CONFIGURATION:")
+    lines.append(f"  spatial_dim:                  2")
+    lines.append(f"  surface_channels:             2")
+    lines.append(f"  volume_channels:              2")
+    lines.append(f"  parameter_channels:           0")
+    lines.append(f"  latent_dim:                   {args.latent_dim}")
+    lines.append(f"  latent_geo_points:            {args.latent_geo_points}")
+    lines.append(f"  subsampled_points:            {args.subsampled_points}")
+    lines.append(f"  num_blocks:                   {args.num_blocks}")
+    lines.append(f"  num_heads:                    {args.num_heads}")
+    lines.append(f"  pos_scale_factor:             1000.0")
+    lines.append(f"  dropout:                      0.0")
+
+    # Telemetry and outcome
+    if summary is not None or kpis is not None:
+        lines.append("-" * 80)
+        lines.append("TRAINING OUTCOME & TELEMETRY:")
+        if summary and "best_val_loss" in summary:
+            lines.append(f"  Best Validation Loss:         {summary['best_val_loss']:.6e}")
+        if kpis and "best_epoch" in kpis:
+            lines.append(f"  Best Checkpoint Epoch:        {kpis['best_epoch']} / {args.epochs}")
+        if kpis and "val_loss_reduction_pct" in kpis:
+            lines.append(f"  Total Val Loss Reduction:     {kpis['val_loss_reduction_pct']:.1f}%")
+        if duration_s is not None:
+            lines.append(f"  Elapsed Wall-Clock Time:      {duration_s:.1f} s")
+        if summary and "best_checkpoint" in summary:
+            lines.append(f"  Best Checkpoint Path:         {summary['best_checkpoint']}")
+
+    lines.append("=" * 80 + "\n")
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
 def main() -> None:
     """Execute surrogate model training workflow."""
     args = parse_args()
@@ -210,26 +299,18 @@ def main() -> None:
         else None
     )
 
-    if args.optimizer == "lion":
-        optimizer = OptimizerController.create_lion(
-            model_parameters=torch_module.parameters(),
-            lr=args.lr,
-            weight_decay=args.weight_decay,
-            scheduler_type=scheduler_type,
-            epochs=args.epochs,
-            kill_switch=kill_switch,
-        )
-    else:
-        optimizer = OptimizerController.create_adamw(
-            model_parameters=torch_module.parameters(),
-            lr=args.lr,
-            weight_decay=args.weight_decay,
-            scheduler_type=scheduler_type,
-            epochs=args.epochs,
-            kill_switch=kill_switch,
-        )
+    optimizer = OptimizerFactory.create(
+        optimizer_type=args.optimizer,
+        model_parameters=torch_module.parameters(),
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+        scheduler_type=scheduler_type,
+        epochs=args.epochs,
+        kill_switch=kill_switch,
+    )
 
     args.models_dir.mkdir(parents=True, exist_ok=True)
+    write_parametros_txt(args.models_dir / "parametros.txt", args)
     checkpointer = TorchCheckpointHandler(checkpoint_dir=args.models_dir, keep_last_n=3)
 
     cli_logger = CliProgressMonitor(batch_size=args.batch_size)
@@ -247,6 +328,7 @@ def main() -> None:
     )
 
     # 7. Execute Training Loop
+    training_start_time = time.time()
     summary = engine.train(
         train_loader=train_loader,
         val_loader=val_loader,
@@ -254,6 +336,7 @@ def main() -> None:
         device=device,
         max_grad_norm=args.max_grad_norm,
     )
+    training_duration_s = time.time() - training_start_time
 
     print("\nTraining completed successfully!")
     print(f"Best Validation Loss: {summary['best_val_loss']:.4e}")
@@ -276,6 +359,7 @@ def main() -> None:
     )
     analysis_output_dir.mkdir(parents=True, exist_ok=True)
 
+    kpis = None
     metrics_file = args.models_dir / "training_metrics.jsonl"
     if metrics_file.exists():
         print(f"\nAnalyzing training dynamics and generating KPI charts in {analysis_output_dir}...")
@@ -288,6 +372,23 @@ def main() -> None:
         print(f"Optimal Checkpoint Epoch: Epoch {kpis['best_epoch']} (Val Rel-L2: {kpis['best_val_loss']:.4e})")
         print(f"Total Val Loss Reduction: {kpis['val_loss_reduction_pct']:.1f}%")
         print(f"Training Artifacts Saved: {analysis_output_dir}")
+
+    # 9. Update Audit Trail (parametros.txt) with final outcome in models and results
+    write_parametros_txt(
+        file_path=args.models_dir / "parametros.txt",
+        args=args,
+        summary=summary,
+        kpis=kpis,
+        duration_s=training_duration_s,
+    )
+    write_parametros_txt(
+        file_path=analysis_output_dir / "parametros.txt",
+        args=args,
+        summary=summary,
+        kpis=kpis,
+        duration_s=training_duration_s,
+    )
+    print(f"Parameters Audit Saved:   {analysis_output_dir / 'parametros.txt'}")
 
 
 if __name__ == "__main__":
