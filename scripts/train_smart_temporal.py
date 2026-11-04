@@ -27,7 +27,9 @@ import json
 from src.training import (
     CliProgressMonitor,
     CompositeTelemetryLogger,
+    EarlyStoppingKillSwitch,
     JsonMetricsLogger,
+    OptimizerController,
     RelativeL2LossEngine,
     SMARTBatchLoader,
     SMARTModelWrapper,
@@ -115,14 +117,28 @@ def parse_args() -> argparse.Namespace:
     # Training hyperparameters
     parser.add_argument("--epochs", type=int, default=30, help="Number of training epochs.")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size per training step.")
+    parser.add_argument(
+        "--optimizer",
+        type=str,
+        default="adamw",
+        choices=["adamw", "lion"],
+        help="Optimization algorithm ('adamw' or 'lion').",
+    )
     parser.add_argument("--lr", type=float, default=1e-4, help="Initial learning rate.")
-    parser.add_argument("--weight_decay", type=float, default=1e-4, help="AdamW weight decay.")
+    parser.add_argument("--weight_decay", type=float, default=1e-4, help="AdamW / Lion weight decay.")
     parser.add_argument(
         "--scheduler",
         type=str,
         default="cosine",
-        choices=["cosine", "plateau", "none"],
+        choices=["cosine", "plateau", "warmup_cosine", "none"],
         help="LR scheduler.",
+    )
+    parser.add_argument(
+        "--early-stopping-patience",
+        type=int,
+        default=None,
+        dest="early_stopping_patience",
+        help="Optional patience (epochs) for EarlyStoppingKillSwitch.",
     )
     parser.add_argument(
         "--max_grad_norm", type=float, default=1.0, help="Gradient clipping norm threshold."
@@ -247,14 +263,32 @@ def main() -> None:
     loss_engine = RelativeL2LossEngine()
 
     scheduler_type = None if args.scheduler == "none" else args.scheduler
-    optimizer = StandardOptimizer.create_adamw(
-        model_parameters=torch_module.parameters(),
-        lr=args.lr,
-        weight_decay=args.weight_decay,
-        scheduler_type=scheduler_type,
-        epochs=args.epochs,
-        use_amp=args.use_amp,
+    kill_switch = (
+        EarlyStoppingKillSwitch(patience=args.early_stopping_patience)
+        if args.early_stopping_patience is not None
+        else None
     )
+
+    if args.optimizer == "lion":
+        optimizer = OptimizerController.create_lion(
+            model_parameters=torch_module.parameters(),
+            lr=args.lr,
+            weight_decay=args.weight_decay,
+            scheduler_type=scheduler_type,
+            epochs=args.epochs,
+            use_amp=args.use_amp,
+            kill_switch=kill_switch,
+        )
+    else:
+        optimizer = OptimizerController.create_adamw(
+            model_parameters=torch_module.parameters(),
+            lr=args.lr,
+            weight_decay=args.weight_decay,
+            scheduler_type=scheduler_type,
+            epochs=args.epochs,
+            use_amp=args.use_amp,
+            kill_switch=kill_switch,
+        )
 
     args.models_dir.mkdir(parents=True, exist_ok=True)
     checkpointer = TorchCheckpointHandler(checkpoint_dir=args.models_dir, keep_last_n=3)
