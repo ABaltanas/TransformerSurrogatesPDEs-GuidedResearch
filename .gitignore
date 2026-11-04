@@ -49,6 +49,7 @@ venv.bak/
 
 # Logging & experiment trackers (if stored outside results/)
 wandb/
+*.log
 
 # IDE / OS specific files
 .vscode/
