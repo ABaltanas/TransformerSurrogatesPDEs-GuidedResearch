@@ -106,6 +106,7 @@ class TrainingEngine:
         if hasattr(self.optimizer, "to"):
             self.optimizer.to(device)
 
+        early_stopped = False
         for epoch in range(start_epoch, epochs + 1):
             self.logger.start_epoch(epoch, epochs, len(train_loader))
 
@@ -115,8 +116,25 @@ class TrainingEngine:
             # 2. Validation step across all batches in val_loader
             val_metrics = self._validate_epoch(val_loader, device)
 
-            # 3. Learning rate schedule step
-            current_lr = self.optimizer.epoch_step(val_metrics.get("loss_total", None))
+            # 3. Learning rate schedule step & health check
+            try:
+                current_lr = self.optimizer.epoch_step(val_metrics.get("loss_total", None))
+            except StopIteration:
+                current_lr = self.optimizer.get_learning_rate()
+                self.logger.end_epoch(epoch, epochs, train_metrics, val_metrics, current_lr)
+                # Save final checkpoint state before terminating
+                save_states = {}
+                if hasattr(self.optimizer, "get_state_dict"):
+                    save_states = self.optimizer.get_state_dict()
+                self.checkpointer.save(
+                    epoch=epoch,
+                    model=model,
+                    metrics=val_metrics,
+                    is_best=False,
+                    **save_states,
+                )
+                early_stopped = True
+                break
 
             # 4. Telemetry logging and progress report
             self.logger.end_epoch(epoch, epochs, train_metrics, val_metrics, current_lr)
@@ -140,10 +158,13 @@ class TrainingEngine:
             )
 
         self.logger.close()
-        return {
+        summary: Dict[str, Any] = {
             "best_val_loss": best_val_loss,
             "best_checkpoint": self.checkpointer.get_best_checkpoint_path(),
         }
+        if early_stopped:
+            summary["early_stopped"] = True
+        return summary
 
     def _train_epoch(
         self,

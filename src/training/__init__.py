@@ -10,6 +10,7 @@ from src.training.engine import TrainingEngine
 from src.training.interfaces import (
     BatchLoader,
     CheckpointHandler,
+    KillSwitch,
     LossEngine,
     ModelWrapper,
     Optimizer,
@@ -25,7 +26,14 @@ from src.training.losses import (
     MSELossEngine,
     RelativeL2LossEngine,
 )
-from src.training.optimizers import StandardOptimizer
+from src.training.optimizers import (
+    CompositeKillSwitch,
+    EarlyStoppingKillSwitch,
+    Lion,
+    NaNOrDivergenceKillSwitch,
+    OptimizerController,
+    StandardOptimizer,
+)
 from src.training.wrappers.smart_wrapper import SMARTModelWrapper
 
 __all__ = [
@@ -34,6 +42,7 @@ __all__ = [
     "ModelWrapper",
     "LossEngine",
     "Optimizer",
+    "KillSwitch",
     "CheckpointHandler",
     "TelemetryLogger",
     # Concrete Loaders
@@ -45,8 +54,13 @@ __all__ = [
     "RelativeL2LossEngine",
     "MSELossEngine",
     "CompositePhysicsLossEngine",
-    # Optimizer
+    # Optimizer & Strategies
+    "OptimizerController",
     "StandardOptimizer",
+    "Lion",
+    "NaNOrDivergenceKillSwitch",
+    "EarlyStoppingKillSwitch",
+    "CompositeKillSwitch",
     # Checkpointing
     "TorchCheckpointHandler",
     # Telemetry

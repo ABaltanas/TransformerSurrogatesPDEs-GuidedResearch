@@ -97,13 +97,70 @@ class LossEngine(ABC):
         pass
 
 
-class Optimizer(ABC):
-    """Abstract interface managing parameter updates and learning rate schedules."""
+class KillSwitch(ABC):
+    """Strategy interface for training health, divergence detection, and early stopping."""
 
     @abstractmethod
+    def check_step(self, loss_val: float, grad_norm: float) -> bool:
+        """Evaluate step metrics; return True if training must be aborted immediately.
+
+        Parameters
+        ----------
+        loss_val : float
+            Current batch loss value.
+        grad_norm : float
+            Gradient norm before clipping.
+
+        Returns
+        -------
+        bool
+            True if training must be aborted immediately; otherwise False.
+        """
+        pass
+
+    @abstractmethod
+    def check_epoch(self, metric_val: Optional[float]) -> bool:
+        """Evaluate epoch validation metric; return True if early stopping is triggered.
+
+        Parameters
+        ----------
+        metric_val : Optional[float]
+            Validation metric for the completed epoch.
+
+        Returns
+        -------
+        bool
+            True if early stopping is triggered; otherwise False.
+        """
+        pass
+
+
+class Optimizer(ABC):
+    """Abstract interface (Bridge Abstraction) managing parameter updates and schedules."""
+
+    def __init__(self, optimizer: Any) -> None:
+        """Initialize the optimizer abstraction with the concrete PyTorch optimizer implementor.
+
+        Parameters
+        ----------
+        optimizer : Any
+            The underlying PyTorch-compatible optimizer implementor (e.g. AdamW, Lion).
+        """
+        self._optimizer = optimizer
+
     def zero_grad(self) -> None:
         """Reset parameter gradients before the backward pass."""
-        pass
+        self._optimizer.zero_grad()
+
+    def get_learning_rate(self) -> float:
+        """Retrieve current active learning rate from the primary parameter group.
+
+        Returns
+        -------
+        float
+            Active learning rate from the primary optimizer parameter group.
+        """
+        return float(self._optimizer.param_groups[0]["lr"])
 
     @abstractmethod
     def step(self, loss: torch.Tensor, max_grad_norm: Optional[float] = None) -> float:
@@ -136,17 +193,6 @@ class Optimizer(ABC):
         -------
         float
             The updated active learning rate.
-        """
-        pass
-
-    @abstractmethod
-    def get_learning_rate(self) -> float:
-        """Retrieve the current active learning rate.
-
-        Returns
-        -------
-        float
-            Active learning rate from the primary optimizer parameter group.
         """
         pass
 
