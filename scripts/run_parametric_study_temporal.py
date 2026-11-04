@@ -49,6 +49,23 @@ if str(PROJECT_ROOT) not in sys.path:
 
 DEFAULT_EXPERIMENT_NAME: str = "experiment1"
 
+# Explicit custom parameter combinations (set to None or [] to use Cartesian sweep over PARAMETRIC_CONFIG).
+# Configured for: latent_dim=128 with num_blocks=[3, 5, 7, 9], and latent_dim=256 with num_blocks=[3, 5]
+CUSTOM_COMBINATIONS: Optional[List[Dict[str, Any]]] = [
+    # Baseline & mid-capacity models:
+    {"latent_dim": 128, "num_blocks": 3},
+    {"latent_dim": 128, "num_blocks": 5},
+    {"latent_dim": 128, "num_blocks": 7},
+    {"latent_dim": 128, "num_blocks": 9},
+    {"latent_dim": 256, "num_blocks": 3},
+    {"latent_dim": 256, "num_blocks": 5},
+    # High-VRAM capacity models (~72% to ~85% VRAM):
+    {"latent_dim": 256, "num_blocks": 7},  # 8,821 MB (72% VRAM) - 10.06M params
+    {"latent_dim": 256, "num_blocks": 8},  # 9,895 MB (81% VRAM) - 11.38M params
+    {"latent_dim": 128, "num_blocks": 17}, # 9,805 MB (80% VRAM) -  6.98M params
+    {"latent_dim": 128, "num_blocks": 18}, # 10,346 MB (84% VRAM) - 7.38M params
+]
+
 PARAMETRIC_CONFIG: Dict[str, Union[Any, List[Any], Tuple[Any, ...]]] = {
     # ─── ARCHITECTURE HYPERPARAMETERS ─────────────────────────────────────────
     # Spatial and physical dimensions (fixed by problem formulation)
@@ -58,17 +75,17 @@ PARAMETRIC_CONFIG: Dict[str, Union[Any, List[Any], Tuple[Any, ...]]] = {
     "parameter_channels": 1,           # Normalized time conditioning t in [0, 1]
 
     # Expressive capacity hyperparameters (tuneable)
-    "latent_dim": [128, 256],          # Latent feature dimension d (sweep example: [128, 256])
+    "latent_dim": [128, 256],          # Latent feature dimension d
     "latent_geo_points": 64,           # Number of latent geometry scaffold points K
     "subsampled_points": 101,          # Geometry points sampled in cross-attention (die has 101 nodes)
-    "num_blocks": [4, 6, 8],           # Number of encoder-decoder Transformer blocks L
+    "num_blocks": [3, 5, 7, 9],        # Number of encoder-decoder Transformer blocks L
     "num_heads": 8,                    # Attention heads (must divide latent_dim)
     "pos_scale_factor": 1000.0,        # Multiplicative scaling factor for positional embeddings
     "dropout": 0.0,                    # Attention and feed-forward dropout probability
 
     # ─── OPTIMIZATION & TRAINING HYPERPARAMETERS ──────────────────────────────
-    "epochs": 30,                      # Number of training epochs per run
-    "batch_size": 64,                  # Training batch size
+    "epochs": 250,                     # Number of training epochs per run
+    "batch_size": 32,                  # Training batch size (32 ensures L=9 and d=256 fit strictly in 12GB VRAM)
     "lr": 1e-4,                        # Initial learning rate
     "weight_decay": 1e-4,              # AdamW weight decay regularizer
     "scheduler": "cosine",             # LR schedule: "cosine", "plateau", or "none"
@@ -308,17 +325,17 @@ def write_parametros_txt(
         lines.append("-" * 80)
         lines.append("TRAINING OUTCOME & TELEMETRY:")
         lines.append(f"  Status:                       {results_summary.get('status', 'COMPLETED')}")
-        if "best_val_loss" in results_summary:
+        if results_summary.get("best_val_loss") is not None:
             lines.append(f"  Best Validation Loss:         {results_summary['best_val_loss']:.6e}")
-        if "best_epoch" in results_summary:
+        if results_summary.get("best_epoch") is not None:
             lines.append(f"  Best Checkpoint Epoch:        {results_summary['best_epoch']} / {run_config.get('epochs')}")
-        if "final_train_loss" in results_summary:
+        if results_summary.get("final_train_loss") is not None:
             lines.append(f"  Final Training Loss:          {results_summary['final_train_loss']:.6e}")
-        if "final_val_loss" in results_summary:
+        if results_summary.get("final_val_loss") is not None:
             lines.append(f"  Final Validation Loss:        {results_summary['final_val_loss']:.6e}")
-        if "duration_seconds" in results_summary:
+        if results_summary.get("duration_seconds") is not None:
             lines.append(f"  Elapsed Wall-Clock Time:      {results_summary['duration_seconds']:.1f} s")
-        if "error_message" in results_summary and results_summary["error_message"]:
+        if results_summary.get("error_message"):
             lines.append(f"  Error Message:                {results_summary['error_message']}")
 
     lines.append("=" * 80 + "\n")
@@ -377,59 +394,89 @@ def execute_single_training_run(
         total_runs=total_runs,
     )
 
-    # 2. Build CLI arguments for scripts/train_smart_temporal.py
-    train_script = PROJECT_ROOT / "scripts" / "train_smart_temporal.py"
-    cmd = [
-        sys.executable,
-        str(train_script),
-        "--data_dir", str(run_config["data_dir"]),
-        "--models_dir", str(models_dir),
-        "--results_dir", str(results_dir),
-        "--epochs", str(run_config["epochs"]),
-        "--batch_size", str(run_config["batch_size"]),
-        "--lr", str(run_config["lr"]),
-        "--weight_decay", str(run_config["weight_decay"]),
-        "--scheduler", str(run_config["scheduler"]),
-        "--max_grad_norm", str(run_config["max_grad_norm"]),
-        "--parameter_channels", str(run_config["parameter_channels"]),
-        "--latent_dim", str(run_config["latent_dim"]),
-        "--latent_geo_points", str(run_config["latent_geo_points"]),
-        "--subsampled_points", str(run_config["subsampled_points"]),
-        "--num_blocks", str(run_config["num_blocks"]),
-        "--num_heads", str(run_config["num_heads"]),
-        "--pos_scale_factor", str(run_config["pos_scale_factor"]),
-        "--dropout", str(run_config["dropout"]),
-        "--device", str(run_config["device"]),
-        "--seed", str(run_config["seed"]),
-    ]
-    if run_config.get("use_amp", True):
-        cmd.append("--use_amp")
+    # 2. Check if run has already completed in a prior execution
+    metrics_file = models_dir / "training_metrics.jsonl"
+    best_model_file = models_dir / "best_model.pt"
+    already_completed = False
+    if metrics_file.exists() and best_model_file.exists():
+        try:
+            records = []
+            with open(metrics_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        records.append(json.loads(line))
+            if records and records[-1].get("epoch", 0) >= run_config["epochs"]:
+                already_completed = True
+        except Exception:
+            already_completed = False
+
+    if already_completed:
+        print("\n" + "=" * 80)
+        print(f"[{run_index}/{total_runs}] SKIPPING RUN (ALREADY COMPLETED): {run_slug}")
+        print(f"Model Directory:   {models_dir}")
+        print(f"Parameters Audit:  {param_txt_path}")
+        print("=" * 80)
+        elapsed_s = 0.0
+        status = "SUCCESS"
+        error_msg = None
     else:
-        cmd.append("--no-use_amp")
+        # Build CLI arguments for scripts/train_smart_temporal.py
+        train_script = PROJECT_ROOT / "scripts" / "train_smart_temporal.py"
+        cmd = [
+            sys.executable,
+            str(train_script),
+            "--data_dir", str(run_config["data_dir"]),
+            "--models_dir", str(models_dir),
+            "--results_dir", str(results_dir),
+            "--epochs", str(run_config["epochs"]),
+            "--batch_size", str(run_config["batch_size"]),
+            "--lr", str(run_config["lr"]),
+            "--weight_decay", str(run_config["weight_decay"]),
+            "--scheduler", str(run_config["scheduler"]),
+            "--max_grad_norm", str(run_config["max_grad_norm"]),
+            "--parameter_channels", str(run_config["parameter_channels"]),
+            "--latent_dim", str(run_config["latent_dim"]),
+            "--latent_geo_points", str(run_config["latent_geo_points"]),
+            "--subsampled_points", str(run_config["subsampled_points"]),
+            "--num_blocks", str(run_config["num_blocks"]),
+            "--num_heads", str(run_config["num_heads"]),
+            "--pos_scale_factor", str(run_config["pos_scale_factor"]),
+            "--dropout", str(run_config["dropout"]),
+            "--device", str(run_config["device"]),
+            "--seed", str(run_config["seed"]),
+        ]
+        if run_config.get("use_amp", True):
+            cmd.append("--use_amp")
+        else:
+            cmd.append("--no-use_amp")
 
-    print("\n" + "=" * 80)
-    print(f"[{run_index}/{total_runs}] EXECUTING RUN: {run_slug}")
-    print(f"Model Directory:   {models_dir}")
-    print(f"Parameters Audit:  {param_txt_path}")
-    print("=" * 80)
+        latest_ckpt = models_dir / "latest.pt"
+        if latest_ckpt.exists():
+            cmd.extend(["--resume", str(latest_ckpt)])
 
-    start_time = time.time()
-    status = "SUCCESS"
-    error_msg = None
+        print("\n" + "=" * 80)
+        print(f"[{run_index}/{total_runs}] EXECUTING RUN: {run_slug}")
+        print(f"Model Directory:   {models_dir}")
+        print(f"Parameters Audit:  {param_txt_path}")
+        print("=" * 80)
 
-    try:
-        # Strictly sequential execution: check=True waits for completion
-        subprocess.run(cmd, check=True)
-    except subprocess.CalledProcessError as e:
-        status = "FAILED"
-        error_msg = f"Training subprocess exited with non-zero returncode {e.returncode}."
-        print(f"\n[ERROR] Run {run_slug} failed: {error_msg}")
-    except Exception as e:
-        status = "FAILED"
-        error_msg = str(e)
-        print(f"\n[ERROR] Unexpected exception during run {run_slug}: {error_msg}")
+        start_time = time.time()
+        status = "SUCCESS"
+        error_msg = None
 
-    elapsed_s = time.time() - start_time
+        try:
+            # Strictly sequential execution: check=True waits for completion
+            subprocess.run(cmd, check=True)
+        except subprocess.CalledProcessError as e:
+            status = "FAILED"
+            error_msg = f"Training subprocess exited with non-zero returncode {e.returncode}."
+            print(f"\n[ERROR] Run {run_slug} failed: {error_msg}")
+        except Exception as e:
+            status = "FAILED"
+            error_msg = str(e)
+            print(f"\n[ERROR] Unexpected exception during run {run_slug}: {error_msg}")
+
+        elapsed_s = time.time() - start_time
 
     # 3. Extract metrics from output logs if training succeeded
     run_summary: Dict[str, Any] = {
@@ -439,7 +486,6 @@ def execute_single_training_run(
         "error_message": error_msg,
     }
 
-    metrics_file = models_dir / "training_metrics.jsonl"
     if metrics_file.exists():
         try:
             records = []
@@ -448,13 +494,27 @@ def execute_single_training_run(
                     if line.strip():
                         records.append(json.loads(line))
             if records:
-                val_losses = [r.get("val_loss", float("inf")) for r in records]
+                val_losses = []
+                for r in records:
+                    if isinstance(r.get("val"), dict):
+                        val_losses.append(r["val"].get("loss_total", float("inf")))
+                    else:
+                        val_losses.append(r.get("val_loss", float("inf")))
                 min_val = min(val_losses)
                 best_ep = val_losses.index(min_val) + 1
                 run_summary["best_val_loss"] = min_val
                 run_summary["best_epoch"] = best_ep
-                run_summary["final_train_loss"] = records[-1].get("train_loss", None)
-                run_summary["final_val_loss"] = records[-1].get("val_loss", None)
+
+                last_rec = records[-1]
+                if isinstance(last_rec.get("train"), dict):
+                    run_summary["final_train_loss"] = last_rec["train"].get("loss_total")
+                else:
+                    run_summary["final_train_loss"] = last_rec.get("train_loss")
+
+                if isinstance(last_rec.get("val"), dict):
+                    run_summary["final_val_loss"] = last_rec["val"].get("loss_total")
+                else:
+                    run_summary["final_val_loss"] = last_rec.get("val_loss")
         except Exception as ex:
             print(f"[WARNING] Failed to parse metrics file {metrics_file}: {ex}")
 
@@ -588,15 +648,25 @@ def main() -> None:
     cli_args = parse_cli_arguments()
     experiment_name = cli_args.experiment_name
 
-    # 1. Identify swept vs fixed parameters from PARAMETRIC_CONFIG
-    swept_keys, swept_params, fixed_params = identify_swept_parameters(PARAMETRIC_CONFIG)
-
-    # 2. Build Cartesian product of all swept values
-    if swept_keys:
-        value_lists = [swept_params[k] for k in swept_keys]
-        combinations = list(itertools.product(*value_lists))
+    # 1. Identify parameter combinations (custom list or Cartesian product)
+    if CUSTOM_COMBINATIONS:
+        # Collect unique swept keys preserving natural order
+        seen_keys = []
+        for combo in CUSTOM_COMBINATIONS:
+            for k in combo.keys():
+                if k not in seen_keys:
+                    seen_keys.append(k)
+        swept_keys = seen_keys
+        swept_params = {k: list({c[k] for c in CUSTOM_COMBINATIONS if k in c}) for k in swept_keys}
+        fixed_params = {k: v for k, v in PARAMETRIC_CONFIG.items() if k not in swept_keys}
+        combinations = [tuple(c[k] for k in swept_keys) for c in CUSTOM_COMBINATIONS]
     else:
-        combinations = [()]
+        swept_keys, swept_params, fixed_params = identify_swept_parameters(PARAMETRIC_CONFIG)
+        if swept_keys:
+            value_lists = [swept_params[k] for k in swept_keys]
+            combinations = list(itertools.product(*value_lists))
+        else:
+            combinations = [()]
 
     total_runs = len(combinations)
     print("=" * 80)
