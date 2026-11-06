@@ -139,7 +139,24 @@ def infer_training_params(
     lr_str = "1e-4"
     b_size = batch_size or 16
 
-    if metrics_file.exists():
+    # 1. Attempt reading accurate parameters from audit file (parametros.txt)
+    param_file = model_dir / "parametros.txt"
+    if param_file.exists():
+        try:
+            with open(param_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    sline = line.strip()
+                    if sline.startswith("batch_size:"):
+                        b_size = int(sline.split("batch_size:")[1].strip())
+                    elif sline.startswith("epochs:"):
+                        total_epochs = int(sline.split("epochs:")[1].strip())
+                    elif sline.startswith("lr:"):
+                        lr_val = float(sline.split("lr:")[1].strip())
+                        raw_lr = f"{lr_val:.1e}".replace("e-0", "e-").replace("e+0", "e+")
+                        lr_str = raw_lr.replace(".0e", "e") if ".0e" in raw_lr else raw_lr
+        except Exception:
+            pass
+    elif metrics_file.exists():
         try:
             with open(metrics_file, "r", encoding="utf-8") as f:
                 first_line = json.loads(f.readline().strip())
@@ -507,13 +524,25 @@ def main() -> None:
     )
     experiment_name = args.experiment or args.model_dir.name
 
-    output_dir = (
-        args.results_dir
-        / dataset_name
-        / model_name
-        / training_params
-        / experiment_name
-    )
+    parent_dir = args.model_dir.resolve().parent
+    if parent_dir.name not in ("models", "") and parent_dir != PROJECT_ROOT:
+        group_name = parent_dir.name
+        output_dir = (
+            args.results_dir
+            / dataset_name
+            / model_name
+            / group_name
+            / training_params
+            / experiment_name
+        )
+    else:
+        output_dir = (
+            args.results_dir
+            / dataset_name
+            / model_name
+            / training_params
+            / experiment_name
+        )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # 2. Hardware Device Setup

@@ -452,13 +452,25 @@ def main() -> None:
     dataset_name = args.data_dir.name
     experiment_name = args.models_dir.name
 
-    analysis_output_dir = (
-        args.results_dir
-        / dataset_name
-        / "SMART"
-        / training_params
-        / experiment_name
-    )
+    parent_dir = args.models_dir.resolve().parent
+    if parent_dir.name not in ("models", "") and parent_dir != PROJECT_ROOT:
+        group_name = parent_dir.name
+        analysis_output_dir = (
+            args.results_dir
+            / dataset_name
+            / "SMART"
+            / group_name
+            / training_params
+            / experiment_name
+        )
+    else:
+        analysis_output_dir = (
+            args.results_dir
+            / dataset_name
+            / "SMART"
+            / training_params
+            / experiment_name
+        )
     analysis_output_dir.mkdir(parents=True, exist_ok=True)
 
     kpis = None
