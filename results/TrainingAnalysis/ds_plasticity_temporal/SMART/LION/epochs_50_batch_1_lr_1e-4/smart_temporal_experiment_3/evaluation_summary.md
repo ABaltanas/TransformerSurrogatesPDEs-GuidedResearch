@@ -1,6 +1,6 @@
 # Surrogate Benchmark Evaluation Report
 
-**Checkpoint:** `models/smart_temporal_experiment_3/best_model.pt`
+**Checkpoint:** `models/LION/smart_temporal_experiment_3/best_model.pt`
 
 ---
 

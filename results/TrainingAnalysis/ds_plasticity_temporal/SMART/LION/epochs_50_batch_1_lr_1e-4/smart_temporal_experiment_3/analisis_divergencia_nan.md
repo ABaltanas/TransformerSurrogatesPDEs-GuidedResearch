@@ -1,8 +1,8 @@
 # Análisis Post-Mortem: Divergencia Numérica (NaN Crash) en SMART Temporal
 
 **Fecha del análisis:** 6 de Noviembre de 2026  
-**Experimento analizado:** `models/smart_temporal_experiment_3`  
-**Directorio de resultados:** `results/TrainingAnalysis/ds_plasticity_temporal/SMART/epochs_50_batch_1_lr_1e-4/smart_temporal_experiment_3`  
+**Experimento analizado:** `models/LION/smart_temporal_experiment_3`  
+**Directorio de resultados:** `results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_50_batch_1_lr_1e-4/smart_temporal_experiment_3`  
 **Modelo:** SMART (Surrogate Model for Accelerated Residual Transformers)  
 **Parámetros entrenables:** 11.380.676 (~11.38M)  
 
@@ -103,7 +103,7 @@ Con pasos de signo de tamaño máximo $\pm 10^{-4}$ repetidos 18.000 veces conse
 ## 5. Integridad del Modelo y Resultados Válidos
 
 Afortunadamente, el sistema de persistencia modular de la base de código (`TorchCheckpointHandler`) implementa seguimiento continuo del mejor loss de validación:
-* El archivo [`best_model.pt`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/models/smart_temporal_experiment_3/best_model.pt) se escribió al terminar la **Época 2**, momento en el que el modelo no contenía ningún valor anómalo.
+* El archivo [`best_model.pt`](file:///home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/models/LION/smart_temporal_experiment_3/best_model.pt) se escribió al terminar la **Época 2**, momento en el que el modelo no contenía ningún valor anómalo.
 * **Comprobación de tensores:** Se ha verificado programáticamente que los 460 tensores de pesos en `best_model.pt` tienen `has_nan == False`.
 * **Rendimiento validado en test (1.600 casos):**
   * Error Relativo L2 Global: **`30.89%`**

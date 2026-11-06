@@ -4,7 +4,7 @@ SMART SURROGATE MODEL - TRAINING CONFIGURATION AUDIT
 Timestamp:             2026-11-05 22:16:33 UTC
 Execution Script:      scripts/train_smart_temporal.py
 Data Directory:        /home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/data/processed/ds_plasticity_temporal
-Models Directory:      models/smart_temporal_experiment_3
+Models Directory:      models/LION/smart_temporal_experiment_3
 Results Directory:     /home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis
 --------------------------------------------------------------------------------
 TRAINING & OPTIMIZATION CONFIGURATION:
@@ -38,5 +38,5 @@ TRAINING OUTCOME & TELEMETRY:
   Best Checkpoint Epoch:        2 / 50
   Total Val Loss Reduction:     34.8%
   Elapsed Wall-Clock Time:      89377.1 s
-  Best Checkpoint Path:         models/smart_temporal_experiment_3/best_model.pt
+  Best Checkpoint Path:         models/LION/smart_temporal_experiment_3/best_model.pt
 ================================================================================
