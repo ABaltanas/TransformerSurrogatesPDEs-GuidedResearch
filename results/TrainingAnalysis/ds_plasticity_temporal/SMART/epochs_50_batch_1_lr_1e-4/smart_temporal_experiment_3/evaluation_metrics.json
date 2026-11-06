@@ -1,0 +1,60 @@
+{
+  "checkpoint": "models/smart_temporal_experiment_3/best_model.pt",
+  "physical_metrics": {
+    "rel_l2_overall": 0.3088733385162275,
+    "l_inf_max_mm": 3.3861038705993947,
+    "surface_rel_l2": 0.28003033517315035,
+    "volume_rel_l2": 0.3253511815229772,
+    "sobolev_h1_semi_norm": 0.6790630653945693
+  },
+  "feasibility_metrics": {
+    "max_die_penetration_mm": 0.0,
+    "mean_die_penetration_mm": 0.0,
+    "penetration_violation_rate_pct": 0.0,
+    "contact_feasibility_pass": 1.0
+  },
+  "computational_metrics": {
+    "inference_latency_ms_per_sample": 10.529777526855469,
+    "peak_vram_mb": 1540.392578125,
+    "total_parameters": 11380676.0,
+    "trainable_parameters": 11380676.0,
+    "surrogate_speedup_vs_fem": 11396.252170945521
+  },
+  "training_kpis": {
+    "total_epochs": 50,
+    "best_epoch": 2,
+    "best_val_loss": 0.3217024779479418,
+    "best_train_loss": 0.4491963817578637,
+    "initial_train_loss": 0.6503281035626618,
+    "initial_val_loss": 0.4937554981426469,
+    "final_train_loss": NaN,
+    "final_val_loss": NaN,
+    "best_val_loss_surf": 0.14477699830728982,
+    "best_val_loss_vol": 0.17692547983356885,
+    "best_train_loss_surf": 0.20085233655195528,
+    "best_train_loss_vol": 0.24834404524277326,
+    "final_val_loss_surf": NaN,
+    "final_val_loss_vol": NaN,
+    "train_loss_reduction_pct": 0.0,
+    "val_loss_reduction_pct": 34.84579328066513,
+    "generalization_gap_best": -0.12749390380992187,
+    "generalization_gap_final": NaN,
+    "initial_lr": 2.8e-05,
+    "final_lr": 1e-06,
+    "min_lr": 1e-06,
+    "convergence_status": "Moderate Convergence (Peak at Epoch 2)"
+  },
+  "training_artifacts": {
+    "training_curves_plot": "results/TrainingAnalysis/ds_plasticity_temporal/SMART/epochs_50_batch_32_lr_2.8e-5/smart_temporal_experiment_3/training_curves.png",
+    "training_history_csv": "results/TrainingAnalysis/ds_plasticity_temporal/SMART/epochs_50_batch_32_lr_2.8e-5/smart_temporal_experiment_3/training_history.csv",
+    "training_metrics_log": "results/TrainingAnalysis/ds_plasticity_temporal/SMART/epochs_50_batch_32_lr_2.8e-5/smart_temporal_experiment_3/training_metrics.jsonl"
+  },
+  "exported_artifacts": {
+    "markdown_report": "results/TrainingAnalysis/ds_plasticity_temporal/SMART/epochs_50_batch_32_lr_2.8e-5/smart_temporal_experiment_3/evaluation_summary.md",
+    "json_report": "results/TrainingAnalysis/ds_plasticity_temporal/SMART/epochs_50_batch_32_lr_2.8e-5/smart_temporal_experiment_3/evaluation_metrics.json",
+    "training_curves_plot": "results/TrainingAnalysis/ds_plasticity_temporal/SMART/epochs_50_batch_32_lr_2.8e-5/smart_temporal_experiment_3/training_curves.png",
+    "training_history_csv": "results/TrainingAnalysis/ds_plasticity_temporal/SMART/epochs_50_batch_32_lr_2.8e-5/smart_temporal_experiment_3/training_history.csv",
+    "training_metrics_log": "results/TrainingAnalysis/ds_plasticity_temporal/SMART/epochs_50_batch_32_lr_2.8e-5/smart_temporal_experiment_3/training_metrics.jsonl",
+    "contour_plot": "results/TrainingAnalysis/ds_plasticity_temporal/SMART/epochs_50_batch_32_lr_2.8e-5/smart_temporal_experiment_3/evaluation_contours.png"
+  }
+}
