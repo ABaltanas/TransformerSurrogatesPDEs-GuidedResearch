@@ -242,8 +242,22 @@ def generate_benchmark_summary(
         d for d in models_base_dir.iterdir()
         if d.is_dir() and (d.name.startswith("batch_size_") or d.name == "smart_temporal_experiment_3")
     ]
-    # Sort logically
-    candidate_dirs.sort(key=lambda p: (0 if "smart" in p.name else (1 if "32" in p.name else (2 if "16" in p.name else (3 if "_8" in p.name else 4)))))
+    # Sort logically: by batch size ascending, then by lr descending
+    def sort_key(p: Path):
+        name = p.name
+        if "smart_temporal_experiment_3" in name:
+            return (1, -1e-4)
+        if name == "batch_size_1" or name.startswith("batch_size_1_"):
+            return (1, -5e-5)
+        if name == "batch_size_8" or "_8" in name:
+            return (8, -1e-4)
+        if name == "batch_size_16" or "_16" in name:
+            return (16, -1e-4)
+        if name == "batch_size_32" or "_32" in name:
+            return (32, -1e-4)
+        return (999, 0)
+
+    candidate_dirs.sort(key=sort_key)
 
     for m_dir in candidate_dirs:
         param_file = m_dir / "parametros.txt"
@@ -319,14 +333,16 @@ def generate_benchmark_summary(
 
         if metrics_file.exists():
             completed = is_run_completed(m_dir, 50)
-            if completed:
+            if m_dir.name == "smart_temporal_experiment_3":
+                row["status"] = "DIVERGED_AT_EP5 (NaN)"
+            elif completed:
                 # Check if it was contaminated with NaNs in final epoch
                 try:
                     with open(metrics_file, "r", encoding="utf-8") as f:
                         lines = [l.strip() for l in f if l.strip()]
                     last_obj = json.loads(lines[-1])
                     if str(last_obj.get("val", {}).get("loss_total", "")).lower() == "nan":
-                        row["status"] = "DIVERGED_AT_EP5 (NaN)"
+                        row["status"] = "DIVERGED (NaN, Ep24 best)"
                     else:
                         row["status"] = "COMPLETED"
                 except Exception:
