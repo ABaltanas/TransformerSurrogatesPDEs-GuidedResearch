@@ -1,0 +1,60 @@
+{
+  "checkpoint": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/models/LION/batch_size_1_lr_5e-5/best_model.pt",
+  "physical_metrics": {
+    "rel_l2_overall": 0.24305986552223807,
+    "l_inf_max_mm": 2.0542469143184054,
+    "surface_rel_l2": 0.2011730661932644,
+    "volume_rel_l2": 0.2586681024593054,
+    "sobolev_h1_semi_norm": 0.49082541361293686
+  },
+  "feasibility_metrics": {
+    "max_die_penetration_mm": 0.0,
+    "mean_die_penetration_mm": 0.0,
+    "penetration_violation_rate_pct": 0.0,
+    "contact_feasibility_pass": 1.0
+  },
+  "computational_metrics": {
+    "inference_latency_ms_per_sample": 10.540180969238282,
+    "peak_vram_mb": 1540.392578125,
+    "total_parameters": 11380676.0,
+    "trainable_parameters": 11380676.0,
+    "surrogate_speedup_vs_fem": 11385.003763239198
+  },
+  "training_kpis": {
+    "total_epochs": 50,
+    "best_epoch": 4,
+    "best_val_loss": 0.2660677866744144,
+    "best_train_loss": 0.33621699560777696,
+    "initial_train_loss": 0.7594371059485194,
+    "initial_val_loss": 0.6157361445881958,
+    "final_train_loss": NaN,
+    "final_val_loss": NaN,
+    "best_val_loss_surf": 0.11100228350509757,
+    "best_val_loss_vol": 0.15506550396260407,
+    "best_train_loss_surf": 0.15143061233413754,
+    "best_train_loss_vol": 0.1847863831902246,
+    "final_val_loss_surf": NaN,
+    "final_val_loss_vol": NaN,
+    "train_loss_reduction_pct": 0.0,
+    "val_loss_reduction_pct": 56.788668488454505,
+    "generalization_gap_best": -0.07014920893336257,
+    "generalization_gap_final": NaN,
+    "initial_lr": 1.4e-05,
+    "final_lr": 1e-06,
+    "min_lr": 1e-06,
+    "convergence_status": "Strong Convergence (56.8% Error Drop, Peak at Epoch 4)"
+  },
+  "training_artifacts": {
+    "training_curves_plot": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_50_batch_1_lr_5e-5/batch_size_1_lr_5e-5/training_curves.png",
+    "training_history_csv": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_50_batch_1_lr_5e-5/batch_size_1_lr_5e-5/training_history.csv",
+    "training_metrics_log": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_50_batch_1_lr_5e-5/batch_size_1_lr_5e-5/training_metrics.jsonl"
+  },
+  "exported_artifacts": {
+    "markdown_report": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_50_batch_1_lr_5e-5/batch_size_1_lr_5e-5/evaluation_summary.md",
+    "json_report": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_50_batch_1_lr_5e-5/batch_size_1_lr_5e-5/evaluation_metrics.json",
+    "training_curves_plot": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_50_batch_1_lr_5e-5/batch_size_1_lr_5e-5/training_curves.png",
+    "training_history_csv": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_50_batch_1_lr_5e-5/batch_size_1_lr_5e-5/training_history.csv",
+    "training_metrics_log": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_50_batch_1_lr_5e-5/batch_size_1_lr_5e-5/training_metrics.jsonl",
+    "contour_plot": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_50_batch_1_lr_5e-5/batch_size_1_lr_5e-5/evaluation_contours.png"
+  }
+}
