@@ -109,7 +109,7 @@ def main() -> None:
 
     # Update Summary Leaderboard
     models_base_dir = PROJECT_ROOT / "models" / "LION"
-    generate_benchmark_summary([32, 16, 8], models_base_dir, results_dir)
+    generate_benchmark_summary([32, 16, 8, 1], models_base_dir, results_dir)
     print("\n" + "=" * 80)
     print("EXTRA EXPERIMENT COMPLETED SUCCESSFULLY!")
     print("=" * 80)

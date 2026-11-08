@@ -342,7 +342,7 @@ def generate_benchmark_summary(
                         lines = [l.strip() for l in f if l.strip()]
                     last_obj = json.loads(lines[-1])
                     if str(last_obj.get("val", {}).get("loss_total", "")).lower() == "nan":
-                        row["status"] = "DIVERGED (NaN, Ep24 best)"
+                        row["status"] = "DIVERGED (NaN, Best Ep saved)"
                     else:
                         row["status"] = "COMPLETED"
                 except Exception:
