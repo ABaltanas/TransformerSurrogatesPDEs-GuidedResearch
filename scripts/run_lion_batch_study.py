@@ -242,20 +242,22 @@ def generate_benchmark_summary(
         d for d in models_base_dir.iterdir()
         if d.is_dir() and (d.name.startswith("batch_size_") or d.name == "smart_temporal_experiment_3")
     ]
-    # Sort logically: by batch size ascending, then by lr descending
+    # Sort logically: by batch size ascending, then by lr descending, then epochs
     def sort_key(p: Path):
         name = p.name
         if "smart_temporal_experiment_3" in name:
-            return (1, -1e-4)
+            return (1, -1e-4, 50)
         if name == "batch_size_1" or name.startswith("batch_size_1_"):
-            return (1, -5e-5)
+            return (1, -5e-5, 50)
         if name == "batch_size_8" or "_8" in name:
-            return (8, -1e-4)
+            return (8, -1e-4, 50)
+        if "epochs_150" in name or "_150" in name:
+            return (16, -1e-4, 150)
         if name == "batch_size_16" or "_16" in name:
-            return (16, -1e-4)
+            return (16, -1e-4, 50)
         if name == "batch_size_32" or "_32" in name:
-            return (32, -1e-4)
-        return (999, 0)
+            return (32, -1e-4, 50)
+        return (999, 0, 0)
 
     candidate_dirs.sort(key=sort_key)
 
@@ -265,6 +267,7 @@ def generate_benchmark_summary(
 
         batch_val = 1
         lr_val = 1e-4
+        epochs_val = 50
 
         if param_file.exists():
             try:
@@ -275,6 +278,8 @@ def generate_benchmark_summary(
                             batch_val = int(sline.split(":")[1].strip())
                         elif sline.startswith("lr:"):
                             lr_val = float(sline.split(":")[1].strip())
+                        elif sline.startswith("epochs:"):
+                            epochs_val = int(sline.split(":")[1].strip())
             except Exception:
                 pass
 
@@ -332,21 +337,26 @@ def generate_benchmark_summary(
                 pass
 
         if metrics_file.exists():
-            completed = is_run_completed(m_dir, 50)
+            completed = is_run_completed(m_dir, epochs_val)
+            has_nan = False
+            try:
+                with open(metrics_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if "NaN" in line or "nan" in line.lower():
+                            has_nan = True
+                            break
+            except Exception:
+                pass
+
             if m_dir.name == "smart_temporal_experiment_3":
                 row["status"] = "DIVERGED_AT_EP5 (NaN)"
             elif completed:
-                # Check if it was contaminated with NaNs in final epoch
-                try:
-                    with open(metrics_file, "r", encoding="utf-8") as f:
-                        lines = [l.strip() for l in f if l.strip()]
-                    last_obj = json.loads(lines[-1])
-                    if str(last_obj.get("val", {}).get("loss_total", "")).lower() == "nan":
-                        row["status"] = "DIVERGED (NaN, Best Ep saved)"
-                    else:
-                        row["status"] = "COMPLETED"
-                except Exception:
+                if has_nan:
+                    row["status"] = "DIVERGED (NaN, Best Ep saved)"
+                else:
                     row["status"] = "COMPLETED"
+            elif has_nan:
+                row["status"] = "DIVERGED (NaN, Best Ep saved)"
             else:
                 row["status"] = "IN_PROGRESS"
 
