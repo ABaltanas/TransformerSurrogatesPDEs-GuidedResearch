@@ -14,6 +14,7 @@ results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/batch_study_summary.m
 import argparse
 from datetime import datetime, timezone
 import json
+import math
 from pathlib import Path
 import subprocess
 import sys
@@ -251,6 +252,8 @@ def generate_benchmark_summary(
             return (1, -5e-5, 50)
         if name == "batch_size_8" or "_8" in name:
             return (8, -1e-4, 50)
+        if "epochs_80" in name or "_80" in name:
+            return (16, -1e-4, 80)
         if "epochs_150" in name or "_150" in name:
             return (16, -1e-4, 150)
         if name == "batch_size_16" or "_16" in name:
@@ -339,14 +342,36 @@ def generate_benchmark_summary(
         if metrics_file.exists():
             completed = is_run_completed(m_dir, epochs_val)
             has_nan = False
+            min_val_loss = float("inf")
+            min_val_epoch = None
+            first_ts = None
+            last_ts = None
             try:
                 with open(metrics_file, "r", encoding="utf-8") as f:
                     for line in f:
+                        if not line.strip():
+                            continue
                         if "NaN" in line or "nan" in line.lower():
                             has_nan = True
-                            break
+                        data = json.loads(line)
+                        ts = data.get("timestamp")
+                        if ts is not None:
+                            if first_ts is None:
+                                first_ts = ts
+                            last_ts = ts
+                        val_loss = data.get("val", {}).get("loss_total")
+                        if val_loss is not None and not math.isnan(val_loss):
+                            if val_loss < min_val_loss:
+                                min_val_loss = val_loss
+                                min_val_epoch = f"{data.get('epoch')} / {epochs_val}"
             except Exception:
                 pass
+
+            if row["best_val_loss"] is None and min_val_loss < float("inf"):
+                row["best_val_loss"] = min_val_loss
+                row["best_epoch"] = min_val_epoch
+            if row["duration_hours"] is None and first_ts and last_ts and last_ts > first_ts:
+                row["duration_hours"] = (last_ts - first_ts) / 3600.0
 
             if m_dir.name == "smart_temporal_experiment_3":
                 row["status"] = "DIVERGED_AT_EP5 (NaN)"
