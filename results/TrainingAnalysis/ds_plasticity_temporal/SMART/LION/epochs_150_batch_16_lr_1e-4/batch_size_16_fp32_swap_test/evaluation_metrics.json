@@ -1,0 +1,60 @@
+{
+  "checkpoint": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/models/LION/batch_size_16_fp32_swap_test/best_model.pt",
+  "physical_metrics": {
+    "rel_l2_overall": 0.03155475172606719,
+    "l_inf_max_mm": 0.44643798573668425,
+    "surface_rel_l2": 0.03374149734917714,
+    "volume_rel_l2": 0.03150212454212897,
+    "sobolev_h1_semi_norm": 0.09910519006102984
+  },
+  "feasibility_metrics": {
+    "max_die_penetration_mm": 0.00023081932430990548,
+    "mean_die_penetration_mm": 0.00023081932430990548,
+    "penetration_violation_rate_pct": 0.0006188118811881188,
+    "contact_feasibility_pass": 1.0
+  },
+  "computational_metrics": {
+    "inference_latency_ms_per_sample": 10.48730697631836,
+    "peak_vram_mb": 1540.392578125,
+    "total_parameters": 11380676.0,
+    "trainable_parameters": 11380676.0,
+    "surrogate_speedup_vs_fem": 11442.403685805602
+  },
+  "training_kpis": {
+    "total_epochs": 150,
+    "best_epoch": 149,
+    "best_val_loss": 0.013878627576761775,
+    "best_train_loss": 0.012081666301108069,
+    "initial_train_loss": 1.292689056661394,
+    "initial_val_loss": 1.1632603804270427,
+    "final_train_loss": 0.012056048306739993,
+    "final_val_loss": 0.013884027488529682,
+    "best_val_loss_surf": 0.0019349855202664104,
+    "best_val_loss_vol": 0.01194364194654756,
+    "best_train_loss_surf": 0.0016940135046736233,
+    "best_train_loss_vol": 0.010387652795761823,
+    "final_val_loss_surf": 0.001930702354810718,
+    "final_val_loss_vol": 0.011953325321276983,
+    "train_loss_reduction_pct": 99.06736672329562,
+    "val_loss_reduction_pct": 98.80691994584507,
+    "generalization_gap_best": 0.0017969612756537062,
+    "generalization_gap_final": 0.0018279791817896896,
+    "initial_lr": 1.6000000000000003e-05,
+    "final_lr": 1e-06,
+    "min_lr": 1e-06,
+    "convergence_status": "Strong Convergence (98.8% Error Drop, Peak at Epoch 149)"
+  },
+  "training_artifacts": {
+    "training_curves_plot": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_150_batch_16_lr_1e-4/batch_size_16_fp32_swap_test/training_curves.png",
+    "training_history_csv": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_150_batch_16_lr_1e-4/batch_size_16_fp32_swap_test/training_history.csv",
+    "training_metrics_log": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_150_batch_16_lr_1e-4/batch_size_16_fp32_swap_test/training_metrics.jsonl"
+  },
+  "exported_artifacts": {
+    "markdown_report": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_150_batch_16_lr_1e-4/batch_size_16_fp32_swap_test/evaluation_summary.md",
+    "json_report": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_150_batch_16_lr_1e-4/batch_size_16_fp32_swap_test/evaluation_metrics.json",
+    "training_curves_plot": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_150_batch_16_lr_1e-4/batch_size_16_fp32_swap_test/training_curves.png",
+    "training_history_csv": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_150_batch_16_lr_1e-4/batch_size_16_fp32_swap_test/training_history.csv",
+    "training_metrics_log": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_150_batch_16_lr_1e-4/batch_size_16_fp32_swap_test/training_metrics.jsonl",
+    "contour_plot": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_150_batch_16_lr_1e-4/batch_size_16_fp32_swap_test/evaluation_contours.png"
+  }
+}

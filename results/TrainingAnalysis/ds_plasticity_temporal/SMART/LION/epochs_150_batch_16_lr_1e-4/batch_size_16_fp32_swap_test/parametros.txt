@@ -1,0 +1,42 @@
+================================================================================
+SMART SURROGATE MODEL - TRAINING CONFIGURATION AUDIT
+================================================================================
+Timestamp:             2026-11-10 05:14:35 UTC
+Execution Script:      scripts/train_smart_temporal.py
+Data Directory:        /home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/data/processed/ds_plasticity_temporal
+Models Directory:      /home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/models/LION/batch_size_16_fp32_swap_test
+Results Directory:     /home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis
+--------------------------------------------------------------------------------
+TRAINING & OPTIMIZATION CONFIGURATION:
+  epochs:                       150
+  batch_size:                   16
+  optimizer:                    lion
+  lr:                           0.0001
+  weight_decay:                 0.0001
+  scheduler:                    warmup_cosine
+  early_stopping_patience:      None
+  max_grad_norm:                1.0
+  use_amp:                      False
+  device:                       cuda
+  seed:                         42
+--------------------------------------------------------------------------------
+SMART ARCHITECTURE CONFIGURATION:
+  spatial_dim:                  2
+  surface_channels:             2
+  volume_channels:              2
+  parameter_channels:           1
+  latent_dim:                   256
+  latent_geo_points:            101
+  subsampled_points:            101
+  num_blocks:                   8
+  num_heads:                    8
+  pos_scale_factor:             1000.0
+  dropout:                      0.0
+--------------------------------------------------------------------------------
+TRAINING OUTCOME & TELEMETRY:
+  Best Validation Loss:         1.387863e-02
+  Best Checkpoint Epoch:        149 / 150
+  Total Val Loss Reduction:     98.8%
+  Elapsed Wall-Clock Time:      49546.5 s
+  Best Checkpoint Path:         /home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/models/LION/batch_size_16_fp32_swap_test/best_model.pt
+================================================================================
