@@ -341,7 +341,7 @@ def generate_benchmark_summary(
 
         if metrics_file.exists():
             completed = is_run_completed(m_dir, epochs_val)
-            has_nan = False
+            last_has_nan = False
             min_val_loss = float("inf")
             min_val_epoch = None
             first_ts = None
@@ -351,8 +351,6 @@ def generate_benchmark_summary(
                     for line in f:
                         if not line.strip():
                             continue
-                        if "NaN" in line or "nan" in line.lower():
-                            has_nan = True
                         data = json.loads(line)
                         ts = data.get("timestamp")
                         if ts is not None:
@@ -364,6 +362,8 @@ def generate_benchmark_summary(
                             if val_loss < min_val_loss:
                                 min_val_loss = val_loss
                                 min_val_epoch = f"{data.get('epoch')} / {epochs_val}"
+                        is_nan = "NaN" in line or "nan" in line.lower() or val_loss is None or (isinstance(val_loss, float) and math.isnan(val_loss))
+                        last_has_nan = is_nan
             except Exception:
                 pass
 
@@ -376,11 +376,11 @@ def generate_benchmark_summary(
             if m_dir.name == "smart_temporal_experiment_3":
                 row["status"] = "DIVERGED_AT_EP5 (NaN)"
             elif completed:
-                if has_nan:
+                if last_has_nan:
                     row["status"] = "DIVERGED (NaN, Best Ep saved)"
                 else:
                     row["status"] = "COMPLETED"
-            elif has_nan:
+            elif last_has_nan:
                 row["status"] = "DIVERGED (NaN, Best Ep saved)"
             else:
                 row["status"] = "IN_PROGRESS"
