@@ -44,17 +44,64 @@ class PlasticityMetricsCalculator(PhysicalMetricsCalculator):
         true_u = target_phys["displacements"].astype(np.float64)
 
         rel_l2 = self.compute_relative_l2(pred_u, true_u)
+        joint_4channel_l2 = self.compute_joint_4channel_relative_l2(pred_u, true_u, initial_mesh)
         l_inf = self.compute_l_infinity(pred_u, true_u)
         surf_vol_dict = self.compute_surface_vs_volume(pred_u, true_u, initial_mesh)
         h1_norm = self.compute_sobolev_h1(pred_u, true_u)
 
         return {
             "rel_l2_overall": rel_l2,
+            "joint_4channel_rel_l2": joint_4channel_l2,
             "l_inf_max_mm": l_inf,
             "surface_rel_l2": surf_vol_dict["surface_rel_l2"],
             "volume_rel_l2": surf_vol_dict["volume_rel_l2"],
             "sobolev_h1_semi_norm": h1_norm,
         }
+
+    def compute_joint_4channel_relative_l2(
+        self,
+        pred_u: np.ndarray,
+        true_u: np.ndarray,
+        initial_mesh: np.ndarray = None,
+    ) -> float:
+        """Compute mean Joint 4-Channel relative L2 error across deformed samples.
+
+        Evaluates the standard literature formulation (Geo-FNO, Transolver, PLT):
+            Rel-L2 = ||Y_hat - Y||_2 / ||Y||_2
+        where:
+            Y = [x0 + u, u] = [x, y, u_x, u_y]
+            Y_hat = [x0 + u_hat, u_hat] = [x_hat, y_hat, u_hat_x, u_hat_y]
+
+        Ignores undeformed initial reference states (norm < 0.1 mm) consistent with
+        compute_relative_l2.
+        """
+        num_samples = pred_u.shape[0]
+        sample_errors = []
+
+        for i in range(num_samples):
+            norm_u = np.linalg.norm(true_u[i])
+            if norm_u < 0.1:
+                continue
+
+            if initial_mesh is not None:
+                if initial_mesh.ndim == 4 and initial_mesh.shape[0] > 1:
+                    mesh_i = initial_mesh[i]
+                elif initial_mesh.ndim == 4 and initial_mesh.shape[0] == 1:
+                    mesh_i = initial_mesh[0]
+                else:
+                    mesh_i = initial_mesh
+            else:
+                mesh_i = np.zeros_like(true_u[i])
+
+            y_true_i = np.concatenate([mesh_i + true_u[i], true_u[i]], axis=-1)
+            y_pred_i = np.concatenate([mesh_i + pred_u[i], pred_u[i]], axis=-1)
+
+            diff = np.linalg.norm(y_pred_i - y_true_i)
+            norm_y = np.linalg.norm(y_true_i)
+
+            sample_errors.append(diff / (norm_y + self.eps))
+
+        return float(np.mean(sample_errors)) if sample_errors else 0.0
 
     def compute_relative_l2(self, pred_u: np.ndarray, true_u: np.ndarray) -> float:
         """Compute mean relative L2 Frobenius error across deformed samples.

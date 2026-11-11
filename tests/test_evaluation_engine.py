@@ -131,6 +131,7 @@ def test_plasticity_metrics_calculator() -> None:
     )
 
     assert metrics["rel_l2_overall"] == pytest.approx(0.0, abs=1e-6)
+    assert metrics["joint_4channel_rel_l2"] == pytest.approx(0.0, abs=1e-6)
     assert metrics["l_inf_max_mm"] == pytest.approx(0.0, abs=1e-6)
     assert metrics["surface_rel_l2"] == pytest.approx(0.0, abs=1e-6)
     assert metrics["volume_rel_l2"] == pytest.approx(0.0, abs=1e-6)
@@ -145,6 +146,16 @@ def test_plasticity_metrics_calculator() -> None:
     )
     assert metrics_shifted["l_inf_max_mm"] == pytest.approx(0.1, abs=1e-6)
     assert metrics_shifted["rel_l2_overall"] > 0.0
+    assert metrics_shifted["joint_4channel_rel_l2"] > 0.0
+
+    # With realistic large mesh coordinates, Joint 4-Channel error is significantly lower than Pure Displacement
+    mesh_large = np.ones(shape, dtype=np.float64) * 20.0
+    metrics_large_mesh = calc.compute_metrics(
+        pred_phys={"displacements": pred_u_shifted},
+        target_phys={"displacements": true_u},
+        initial_mesh=mesh_large,
+    )
+    assert metrics_large_mesh["joint_4channel_rel_l2"] < metrics_shifted["rel_l2_overall"]
 
 
 def test_die_penetration_validator() -> None:
@@ -244,6 +255,7 @@ def test_evaluation_engine_end_to_end() -> None:
         )
 
         assert "physical_metrics" in results
+        assert "joint_4channel_rel_l2" in results["physical_metrics"]
         assert "feasibility_metrics" in results
         assert "computational_metrics" in results
         assert "exported_artifacts" in results
@@ -251,6 +263,10 @@ def test_evaluation_engine_end_to_end() -> None:
         # Verify exported artifacts
         assert (temp_dir / "report" / "evaluation_summary.md").exists()
         assert (temp_dir / "report" / "evaluation_metrics.json").exists()
+
+        md_content = (temp_dir / "report" / "evaluation_summary.md").read_text(encoding="utf-8")
+        assert "Pure Displacement Relative L2 Error" in md_content
+        assert "Joint 4-Channel Relative L2 Error (Literature)" in md_content
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 

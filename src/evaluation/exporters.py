@@ -35,6 +35,7 @@ class MarkdownReportExporter(ReportExporter):
         ckpt = summary.get("checkpoint", "Unknown")
 
         rel_l2 = phys.get("rel_l2_overall", 0.0) * 100.0
+        joint_l2 = phys.get("joint_4channel_rel_l2")
         surf_l2 = phys.get("surface_rel_l2", 0.0) * 100.0
         vol_l2 = phys.get("volume_rel_l2", 0.0) * 100.0
         l_inf = phys.get("l_inf_max_mm", 0.0)
@@ -50,6 +51,12 @@ class MarkdownReportExporter(ReportExporter):
         params = int(comp.get("trainable_parameters", 0))
         speedup = comp.get("surrogate_speedup_vs_fem", 0.0)
 
+        joint_row = ""
+        if joint_l2 is not None:
+            joint_pct = joint_l2 * 100.0
+            joint_assessment = "Excellent" if joint_pct < 1.0 else ("Adequate" if joint_pct < 5.0 else "Moderate")
+            joint_row = f"| **Joint 4-Channel Relative L2 Error (Literature)** | **{joint_pct:.2f}%** | < 1.0% | {joint_assessment} |\n"
+
         content = f"""# Surrogate Benchmark Evaluation Report
 
 **Checkpoint:** `{ckpt}`
@@ -59,8 +66,8 @@ class MarkdownReportExporter(ReportExporter):
 ### 1. Physical Accuracy Metrics (Real Physical Units: mm)
 | Metric | Value | Reference Standard | Assessment |
 | :--- | :--- | :--- | :--- |
-| **Overall Relative L2 Error** | **{rel_l2:.2f}%** | < 5.0% | {"Excellent" if rel_l2 < 5.0 else "Adequate"} |
-| **Surface Contact L2 Error** | **{surf_l2:.2f}%** | < 6.0% | {"Strong Contact Adherence" if surf_l2 < 6.0 else "Moderate"} |
+| **Pure Displacement Relative L2 Error** | **{rel_l2:.2f}%** | < 5.0% | {"Excellent" if rel_l2 < 5.0 else "Adequate"} |
+{joint_row}| **Surface Contact L2 Error** | **{surf_l2:.2f}%** | < 6.0% | {"Strong Contact Adherence" if surf_l2 < 6.0 else "Moderate"} |
 | **Volume Interior L2 Error** | **{vol_l2:.2f}%** | < 5.0% | {"Accurate Continuum Flow" if vol_l2 < 5.0 else "Moderate"} |
 | **Maximum Pointwise Error (L_inf)** | **{l_inf:.3f} mm** | Peak displacement: ~6.5 mm | Peak localized deviation |
 | **Sobolev H1 Semi-Norm Error** | **{h1:.2f}%** | < 10.0% | Strain gradient fidelity |
