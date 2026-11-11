@@ -7,7 +7,8 @@
 ### 1. Physical Accuracy Metrics (Real Physical Units: mm)
 | Metric | Value | Reference Standard | Assessment |
 | :--- | :--- | :--- | :--- |
-| **Overall Relative L2 Error** | **11.45%** | < 5.0% | Adequate |
+| **Pure Displacement Relative L2 Error** | **11.45%** | < 5.0% | Adequate |
+| **Joint 4-Channel Relative L2 Error (Literature)** | **0.20%** | < 1.0% | Excellent |
 | **Surface Contact L2 Error** | **10.67%** | < 6.0% | Moderate |
 | **Volume Interior L2 Error** | **11.72%** | < 5.0% | Moderate |
 | **Maximum Pointwise Error (L_inf)** | **0.824 mm** | Peak displacement: ~6.5 mm | Peak localized deviation |

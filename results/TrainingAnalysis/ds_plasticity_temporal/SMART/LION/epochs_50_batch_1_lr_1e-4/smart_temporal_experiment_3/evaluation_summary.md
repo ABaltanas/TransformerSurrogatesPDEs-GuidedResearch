@@ -1,13 +1,14 @@
 # Surrogate Benchmark Evaluation Report
 
-**Checkpoint:** `models/LION/smart_temporal_experiment_3/best_model.pt`
+**Checkpoint:** `models/smart_temporal_experiment_3/best_model.pt`
 
 ---
 
 ### 1. Physical Accuracy Metrics (Real Physical Units: mm)
 | Metric | Value | Reference Standard | Assessment |
 | :--- | :--- | :--- | :--- |
-| **Overall Relative L2 Error** | **30.89%** | < 5.0% | Adequate |
+| **Pure Displacement Relative L2 Error** | **30.89%** | < 5.0% | Adequate |
+| **Joint 4-Channel Relative L2 Error (Literature)** | **0.71%** | < 1.0% | Excellent |
 | **Surface Contact L2 Error** | **28.00%** | < 6.0% | Moderate |
 | **Volume Interior L2 Error** | **32.54%** | < 5.0% | Moderate |
 | **Maximum Pointwise Error (L_inf)** | **3.386 mm** | Peak displacement: ~6.5 mm | Peak localized deviation |

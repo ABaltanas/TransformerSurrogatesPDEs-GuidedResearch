@@ -5,7 +5,8 @@
     "l_inf_max_mm": 0.5653069780860309,
     "surface_rel_l2": 0.0731324479396187,
     "volume_rel_l2": 0.08140340820548712,
-    "sobolev_h1_semi_norm": 0.17892188021326097
+    "sobolev_h1_semi_norm": 0.17892188021326097,
+    "joint_4channel_rel_l2": 0.0013721745370187512
   },
   "feasibility_metrics": {
     "max_die_penetration_mm": 0.0,
