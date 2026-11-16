@@ -722,4 +722,65 @@ def test_write_parametros_txt_audit_file() -> None:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def test_fine_tuning_scheduler_and_audit():
+    """Verify that fine-tuning with min_lr and pretrained_weights is accurately recorded in audit."""
+    from scripts.train_smart_temporal import write_parametros_txt
+    import argparse
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="test_finetune_"))
+    try:
+        fpath = temp_dir / "parametros.txt"
+        args = argparse.Namespace(
+            data_dir=Path("data/processed/ds_plasticity_temporal"),
+            models_dir=temp_dir,
+            results_dir=Path("results/TrainingAnalysis"),
+            epochs=200,
+            batch_size=16,
+            optimizer="lion",
+            lr=1e-5,
+            min_lr=1e-7,
+            weight_decay=1e-4,
+            scheduler="cosine",
+            early_stopping_patience=None,
+            max_grad_norm=1.0,
+            use_amp=False,
+            device="cpu",
+            seed=42,
+            parameter_channels=1,
+            latent_dim=256,
+            latent_geo_points=101,
+            subsampled_points=101,
+            num_blocks=8,
+            num_heads=8,
+            pos_scale_factor=1000.0,
+            dropout=0.0,
+            pretrained_weights=Path("models/LION/batch_size_16_fp32_swap_test/best_model.pt"),
+            start_epoch=151,
+        )
+        write_parametros_txt(fpath, args)
+        assert fpath.exists()
+        text = fpath.read_text(encoding="utf-8")
+        assert "min_lr:                       1e-07" in text
+        assert "pretrained_weights:" in text
+        assert "start_epoch:                  151" in text
+
+        # Verify OptimizerFactory creates scheduler with 50 epochs and min_lr 1e-7
+        dummy_param = [torch.nn.Parameter(torch.zeros(2, 2))]
+        opt = OptimizerFactory.create(
+            optimizer_type="lion",
+            model_parameters=dummy_param,
+            lr=1e-5,
+            scheduler_type="cosine",
+            epochs=50,
+            min_lr=1e-7,
+        )
+        assert abs(opt.get_learning_rate() - 1e-5) < 1e-8
+        for _ in range(50):
+            opt.epoch_step()
+        assert abs(opt.get_learning_rate() - 1e-7) < 1e-8
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+
 

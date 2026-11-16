@@ -128,6 +128,12 @@ def parse_args() -> argparse.Namespace:
         help="Optimization algorithm ('adamw' or 'lion').",
     )
     parser.add_argument("--lr", type=float, default=1e-4, help="Initial learning rate.")
+    parser.add_argument(
+        "--min_lr",
+        type=float,
+        default=1e-6,
+        help="Minimum learning rate floor for scheduler (e.g. 1e-7).",
+    )
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="AdamW / Lion weight decay.")
     parser.add_argument(
         "--scheduler",
@@ -170,6 +176,18 @@ def parse_args() -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Enable automatic mixed precision (AMP FP16) for GPU training.",
+    )
+    parser.add_argument(
+        "--pretrained_weights",
+        type=Path,
+        default=None,
+        help="Path to checkpoint from which to initialize model weights for fine-tuning.",
+    )
+    parser.add_argument(
+        "--start_epoch",
+        type=int,
+        default=None,
+        help="Optional explicit starting epoch index (e.g. 151).",
     )
     parser.add_argument(
         "--resume",
@@ -230,6 +248,7 @@ def write_parametros_txt(
     lines.append(f"  batch_size:                   {args.batch_size}")
     lines.append(f"  optimizer:                    {args.optimizer}")
     lines.append(f"  lr:                           {args.lr}")
+    lines.append(f"  min_lr:                       {getattr(args, 'min_lr', 1e-6)}")
     lines.append(f"  weight_decay:                 {args.weight_decay}")
     lines.append(f"  scheduler:                    {args.scheduler}")
     lines.append(f"  early_stopping_patience:      {args.early_stopping_patience}")
@@ -237,6 +256,10 @@ def write_parametros_txt(
     lines.append(f"  use_amp:                      {args.use_amp}")
     lines.append(f"  device:                       {args.device}")
     lines.append(f"  seed:                         {args.seed}")
+    if getattr(args, "pretrained_weights", None) is not None:
+        lines.append(f"  pretrained_weights:           {args.pretrained_weights}")
+    if getattr(args, "start_epoch", None) is not None:
+        lines.append(f"  start_epoch:                  {args.start_epoch}")
 
     # SMART Architecture configuration
     lines.append("-" * 80)
@@ -359,24 +382,56 @@ def main() -> None:
         else None
     )
 
+    args.models_dir.mkdir(parents=True, exist_ok=True)
+    write_parametros_txt(args.models_dir / "parametros.txt", args)
+    checkpointer = TorchCheckpointHandler(checkpoint_dir=args.models_dir, keep_last_n=3)
+
+    # State restoration / initialization
+    start_epoch = 1
+    best_val_loss = None
+
+    if args.pretrained_weights is not None:
+        pretrained_path = Path(args.pretrained_weights)
+        if not pretrained_path.is_absolute() and not pretrained_path.exists():
+            pretrained_path = PROJECT_ROOT / pretrained_path
+
+        if not pretrained_path.exists():
+            raise FileNotFoundError(f"Pretrained weights not found at: {pretrained_path}")
+
+        print(f"\n[FINE-TUNING] Loading model weights from: {pretrained_path}")
+        loaded_payload = checkpointer.load_checkpoint(pretrained_path, torch_module)
+        ckpt_epoch = loaded_payload.get("epoch", 0)
+
+        if args.start_epoch is not None:
+            start_epoch = args.start_epoch
+        elif ckpt_epoch > 0:
+            start_epoch = ckpt_epoch + 1
+
+        if "metrics" in loaded_payload and "loss_total" in loaded_payload["metrics"]:
+            best_val_loss = float(loaded_payload["metrics"]["loss_total"])
+        else:
+            best_val_loss = checkpointer.get_best_val_loss()
+
+        print(f"[FINE-TUNING] Resuming at Start Epoch: {start_epoch} / {args.epochs}")
+        print(f"[FINE-TUNING] Benchmark Best Val Loss: {best_val_loss:.6e}\n")
+
+    # Determine scheduler duration (e.g. for cosine annealing over remaining fine-tuning epochs)
+    if start_epoch > 1:
+        scheduler_epochs = max(1, args.epochs - start_epoch + 1)
+    else:
+        scheduler_epochs = args.epochs
+
     optimizer = OptimizerFactory.create(
         optimizer_type=args.optimizer,
         model_parameters=torch_module.parameters(),
         lr=args.lr,
         weight_decay=args.weight_decay,
         scheduler_type=scheduler_type,
-        epochs=args.epochs,
+        epochs=scheduler_epochs,
+        min_lr=args.min_lr,
         use_amp=args.use_amp,
         kill_switch=kill_switch,
     )
-
-    args.models_dir.mkdir(parents=True, exist_ok=True)
-    write_parametros_txt(args.models_dir / "parametros.txt", args)
-    checkpointer = TorchCheckpointHandler(checkpoint_dir=args.models_dir, keep_last_n=3)
-
-    # State restoration if resuming
-    start_epoch = 1
-    best_val_loss = None
 
     if args.resume is not None:
         ckpt_target = Path(args.resume)
@@ -410,6 +465,9 @@ def main() -> None:
                 f"target epochs {args.epochs}. Nothing to train."
             )
             return
+
+    if best_val_loss is None:
+        best_val_loss = checkpointer.get_best_val_loss()
 
     cli_logger = CliProgressMonitor(batch_size=args.batch_size)
     json_logger = JsonMetricsLogger(log_file=args.models_dir / "training_metrics.jsonl")
