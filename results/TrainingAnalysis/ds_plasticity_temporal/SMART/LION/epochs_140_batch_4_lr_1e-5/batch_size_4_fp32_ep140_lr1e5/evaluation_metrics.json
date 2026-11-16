@@ -1,0 +1,61 @@
+{
+  "checkpoint": "models/LION/batch_size_4_fp32_ep140_lr1e5/best_model.pt",
+  "physical_metrics": {
+    "rel_l2_overall": 0.050225691945501354,
+    "joint_4channel_rel_l2": 0.0009513322515769462,
+    "l_inf_max_mm": 0.5595120088565215,
+    "surface_rel_l2": 0.049550157752460446,
+    "volume_rel_l2": 0.0500611208477654,
+    "sobolev_h1_semi_norm": 0.12913510607617926
+  },
+  "feasibility_metrics": {
+    "max_die_penetration_mm": 0.0010674182284500233,
+    "mean_die_penetration_mm": 0.0010674182284500233,
+    "penetration_violation_rate_pct": 0.0006188118811881188,
+    "contact_feasibility_pass": 1.0
+  },
+  "computational_metrics": {
+    "inference_latency_ms_per_sample": 10.484677124023438,
+    "peak_vram_mb": 1540.392578125,
+    "total_parameters": 11380676.0,
+    "trainable_parameters": 11380676.0,
+    "surrogate_speedup_vs_fem": 11445.273762893963
+  },
+  "training_kpis": {
+    "total_epochs": 140,
+    "best_epoch": 139,
+    "best_val_loss": 0.024529596976935863,
+    "best_train_loss": 0.02086050868893249,
+    "initial_train_loss": 1.405267228494088,
+    "initial_val_loss": 1.1752916025263922,
+    "final_train_loss": 0.02080318359963389,
+    "final_val_loss": 0.02568157823490245,
+    "best_val_loss_surf": 0.0041048426630108485,
+    "best_val_loss_vol": 0.02042475426569581,
+    "best_train_loss_surf": 0.0038497661027746895,
+    "best_train_loss_vol": 0.017010742598420215,
+    "final_val_loss_surf": 0.004826813422343029,
+    "final_val_loss_vol": 0.020854764817548648,
+    "train_loss_reduction_pct": 98.51962792714329,
+    "val_loss_reduction_pct": 97.91289268772044,
+    "generalization_gap_best": 0.003669088288003372,
+    "generalization_gap_final": 0.004878394635268561,
+    "initial_lr": 1.642857142857143e-06,
+    "final_lr": 1e-06,
+    "min_lr": 1e-06,
+    "convergence_status": "Strong Convergence (97.9% Error Drop, Peak at Epoch 139)"
+  },
+  "training_artifacts": {
+    "training_curves_plot": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_140_batch_4_lr_1e-5/batch_size_4_fp32_ep140_lr1e5/training_curves.png",
+    "training_history_csv": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_140_batch_4_lr_1e-5/batch_size_4_fp32_ep140_lr1e5/training_history.csv",
+    "training_metrics_log": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_140_batch_4_lr_1e-5/batch_size_4_fp32_ep140_lr1e5/training_metrics.jsonl"
+  },
+  "exported_artifacts": {
+    "markdown_report": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_140_batch_4_lr_1e-5/batch_size_4_fp32_ep140_lr1e5/evaluation_summary.md",
+    "json_report": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_140_batch_4_lr_1e-5/batch_size_4_fp32_ep140_lr1e5/evaluation_metrics.json",
+    "training_curves_plot": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_140_batch_4_lr_1e-5/batch_size_4_fp32_ep140_lr1e5/training_curves.png",
+    "training_history_csv": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_140_batch_4_lr_1e-5/batch_size_4_fp32_ep140_lr1e5/training_history.csv",
+    "training_metrics_log": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_140_batch_4_lr_1e-5/batch_size_4_fp32_ep140_lr1e5/training_metrics.jsonl",
+    "contour_plot": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_140_batch_4_lr_1e-5/batch_size_4_fp32_ep140_lr1e5/evaluation_contours.png"
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "checkpoint": "models/LION/batch_size_1_fp32_ep45_lr1e5/best_model.pt",
+  "physical_metrics": {
+    "rel_l2_overall": 0.07497857966030974,
+    "joint_4channel_rel_l2": 0.0014313316060358188,
+    "l_inf_max_mm": 0.5498241021263643,
+    "surface_rel_l2": 0.06718527309199873,
+    "volume_rel_l2": 0.07757566425775789,
+    "sobolev_h1_semi_norm": 0.16940969172777087
+  },
+  "feasibility_metrics": {
+    "max_die_penetration_mm": 0.0013732834817830053,
+    "mean_die_penetration_mm": 0.0013732834817830053,
+    "penetration_violation_rate_pct": 0.0006188118811881188,
+    "contact_feasibility_pass": 1.0
+  },
+  "computational_metrics": {
+    "inference_latency_ms_per_sample": 10.512294006347657,
+    "peak_vram_mb": 1540.392578125,
+    "total_parameters": 11380676.0,
+    "trainable_parameters": 11380676.0,
+    "surrogate_speedup_vs_fem": 11415.20584636809
+  },
+  "training_kpis": {
+    "total_epochs": 45,
+    "best_epoch": 45,
+    "best_val_loss": 0.03959247475722805,
+    "best_train_loss": 0.03424355839522064,
+    "initial_train_loss": 1.1425396554803269,
+    "initial_val_loss": 1.011610623555524,
+    "final_train_loss": 0.03424355839522064,
+    "final_val_loss": 0.03959247475722805,
+    "best_val_loss_surf": 0.008406012827513873,
+    "best_val_loss_vol": 0.031186461845313065,
+    "best_train_loss_surf": 0.007571639192580632,
+    "best_train_loss_vol": 0.026671919192765927,
+    "final_val_loss_surf": 0.008406012827513873,
+    "final_val_loss_vol": 0.031186461845313065,
+    "train_loss_reduction_pct": 97.00285602946319,
+    "val_loss_reduction_pct": 96.08619424951551,
+    "generalization_gap_best": 0.005348916362007405,
+    "generalization_gap_final": 0.005348916362007405,
+    "initial_lr": 3.2500000000000006e-06,
+    "final_lr": 1e-06,
+    "min_lr": 1e-06,
+    "convergence_status": "Strong Convergence (96.1% Error Drop, Peak at Epoch 45)"
+  },
+  "training_artifacts": {
+    "training_curves_plot": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_45_batch_1_lr_1e-5/batch_size_1_fp32_ep45_lr1e5/training_curves.png",
+    "training_history_csv": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_45_batch_1_lr_1e-5/batch_size_1_fp32_ep45_lr1e5/training_history.csv",
+    "training_metrics_log": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_45_batch_1_lr_1e-5/batch_size_1_fp32_ep45_lr1e5/training_metrics.jsonl"
+  },
+  "exported_artifacts": {
+    "markdown_report": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_45_batch_1_lr_1e-5/batch_size_1_fp32_ep45_lr1e5/evaluation_summary.md",
+    "json_report": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_45_batch_1_lr_1e-5/batch_size_1_fp32_ep45_lr1e5/evaluation_metrics.json",
+    "training_curves_plot": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_45_batch_1_lr_1e-5/batch_size_1_fp32_ep45_lr1e5/training_curves.png",
+    "training_history_csv": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_45_batch_1_lr_1e-5/batch_size_1_fp32_ep45_lr1e5/training_history.csv",
+    "training_metrics_log": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_45_batch_1_lr_1e-5/batch_size_1_fp32_ep45_lr1e5/training_metrics.jsonl",
+    "contour_plot": "/home/arturo/GuidedResearch/TransformerSurrogatesPDEs-GuidedResearch/results/TrainingAnalysis/ds_plasticity_temporal/SMART/LION/epochs_45_batch_1_lr_1e-5/batch_size_1_fp32_ep45_lr1e5/evaluation_contours.png"
+  }
+}
